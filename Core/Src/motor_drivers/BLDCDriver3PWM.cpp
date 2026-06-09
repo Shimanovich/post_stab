@@ -38,21 +38,55 @@ void BLDCDriver3PWM::disable()
 
 void BLDCDriver3PWM::setPwm(float Ua, float Ub, float Uc)
 {
-    if (_pwmPeriod == 0) return;
+//    Ua = _constrain(Ua, 0.0f, voltage_limit);
+//    Ub = _constrain(Ub, 0.0f, voltage_limit);
+//    Uc = _constrain(Uc, 0.0f, voltage_limit);
+//
+//        Ua = Ua / voltage_limit;
+//        Ub = Ub / voltage_limit;
+//        Uc = Uc / voltage_limit;
 
-    Ua = _constrain(Ua, 0.0f, voltage_limit);
-    Ub = _constrain(Ub, 0.0f, voltage_limit);
-    Uc = _constrain(Uc, 0.0f, voltage_limit);
 
-        Ua = Ua / voltage_limit;
-        Ub = Ub / voltage_limit;
-        Uc = Uc / voltage_limit;
+	  printf(">Ua:%f\n",Ua);
+	  printf(">Ub:%f\n",Ub);
+	  printf(">Uc:%f\n",Uc);
 
-        uint32_t pwmA = (uint32_t)(Ua * _pwmPeriod + 0.5f);
-        uint32_t pwmB = (uint32_t)(Ub * _pwmPeriod + 0.5f);
-        uint32_t pwmC = (uint32_t)(Uc * _pwmPeriod + 0.5f);
+		float ct = (float)_pwmPeriod / voltage_power_supply;
 
-        __HAL_TIM_SET_COMPARE(_timA, _channelA, pwmA);
-        __HAL_TIM_SET_COMPARE(_timB, _channelB, pwmB);
-        __HAL_TIM_SET_COMPARE(_timC, _channelC, pwmC);
+		uint32_t pwmA = (uint32_t)((Ua/voltage_power_supply + 0.5f) *(float)_pwmPeriod * 0.5f);
+		uint32_t pwmB = (uint32_t)((Ub/voltage_power_supply + 0.5f) *(float)_pwmPeriod * 0.5f);
+		uint32_t pwmC = (uint32_t)((Uc/voltage_power_supply + 0.5f) *(float)_pwmPeriod * 0.5f);
+
+        printf(">pwmA:%d\n",pwmA);
+        printf(">pwmB:%d\n",pwmB);
+        printf(">pwmC:%d\n",pwmC);
+//
+//
+//        __HAL_TIM_SET_COMPARE(_timA, _channelA, pwmA);
+//        __HAL_TIM_SET_COMPARE(_timB, _channelB, pwmB);
+//        __HAL_TIM_SET_COMPARE(_timC, _channelC, pwmC);
+
+
+
+//	  // limit the voltage in driver
+//	  Ua = _constrain(Ua, 0.0f, voltage_limit);
+//	  Ub = _constrain(Ub, 0.0f, voltage_limit);
+//	  Uc = _constrain(Uc, 0.0f, voltage_limit);
+//	  // calculate duty cycle
+//	  // limited in [0,1]
+//	  float dc_a = _constrain(Ua / voltage_power_supply, 0.0 , 1.0 );
+//	  float dc_b = _constrain(Ub / voltage_power_supply, 0.0 , 1.0 );
+//	  float dc_c = _constrain(Uc / voltage_power_supply, 0.0 , 1.0 );
+//
+// 	  printf(">pwmA:%f\n",dc_a * _timA->Instance->ARR);
+//  	  printf(">pwmB:%f\n",dc_b * _timB->Instance->ARR);
+//  	  printf(">pwmC:%f\n",dc_c * _timC->Instance->ARR);
+//
+//	  //__HAL_TIM_SET_COMPARE(_timA, _channelA, dc_a * _timA->Instance->ARR);
+//	  //__HAL_TIM_SET_COMPARE(_timB, _channelB, dc_b * _timB->Instance->ARR);
+//	  //__HAL_TIM_SET_COMPARE(_timC, _channelC, dc_c * _timC->Instance->ARR);
+
+
+
+
 }

@@ -30,6 +30,7 @@
 #include "BLDCDriver3PWM.h"
 #include "BLDCMotor.h"
 #include "FOCMotor.h"
+#include "stdio.h"
 
 /* USER CODE END Includes */
 
@@ -65,12 +66,24 @@ void SystemClock_Config(void);
 
 // Драйверы
 BLDCDriver3PWM driverMot0(&htim2, TIM_CHANNEL_2, &htim2, TIM_CHANNEL_3, &htim2, TIM_CHANNEL_4);
+
 BLDCDriver3PWM driverMot1(&htim3, TIM_CHANNEL_2, &htim3, TIM_CHANNEL_3, &htim3, TIM_CHANNEL_4);
 
 // Моторы DC-2813C (7 pole pairs)
 BLDCMotor motor0 = BLDCMotor(7);
 BLDCMotor motor1 = BLDCMotor(7);
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+int _write(int file, char *ptr, int len)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, HAL_MAX_DELAY);
+    return len;
+}
+#ifdef __cplusplus
+}
+#endif
 
 void runMotor(void)
 {
@@ -78,7 +91,7 @@ void runMotor(void)
 
 
 		float vm = 14.0f;
-		float vl = 5.0f;
+		float vl = 6.0f;
 
 
 	    driverMot0.voltage_power_supply = vm;
@@ -112,25 +125,36 @@ void runMotor(void)
 	    HAL_Delay(8000);
 
 
-	    float speed = 0.0001;
+	    float speed = 0.0000;
 
 	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
 
-//	    HAL_Delay(2000);
+
+//	    while(1)
+//	    {
+//	    	printf("Test  \n\r");
+//	    	HAL_Delay(2000);
+//	    }
+
+	    HAL_Delay(8000);
+
 
 	    uint32_t start_tick = HAL_GetTick();
 	    uint32_t circle_tick = HAL_GetTick();
 
-	    while((HAL_GetTick() - start_tick)<5000 )
+	    speed = 0.1;
+	    while((HAL_GetTick() - start_tick)<50000 )
+	    //while(1)
 	    {
-	    	if ((HAL_GetTick()-circle_tick)>1000)
+
+	    	if ((HAL_GetTick()-circle_tick)>10000)
 	    	{
 	    		speed = -speed;
 	    		circle_tick = HAL_GetTick();
 	    	}
-
-	    	//motor1.move(speed);
+//	    	speed += .001;
 	    	motor0.move(speed);
+	    	motor1.move(speed);
 	    	HAL_Delay(1);
 
 	    }
@@ -143,6 +167,44 @@ void runMotor(void)
 
 	    }
 
+}
+
+void I2C_ScanExternalBus(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == NULL)
+    {
+        printf("Error: hi2c == NULL\r\n");
+        return;
+    }
+
+    printf("=== SCAN I2C BUS ===\r\n");
+    printf("Devs addrs (7-bit):\r\n");
+
+    uint8_t found = 0;
+    uint32_t start_tick = HAL_GetTick();
+
+    for (uint8_t addr = 1; addr < 128; addr++)   // 0x01 .. 0x7F
+    {
+        // Проверяем наличие устройства (3 попытки, таймаут 100 мс)
+        if (HAL_I2C_IsDeviceReady(hi2c, (addr << 1), 3, 100) == HAL_OK)
+        {
+            printf("  find: 0x%02X  (0x%02X)\r\n", addr, (addr << 1));
+            found++;
+        }
+
+        // Небольшая пауза, чтобы не забивать шину
+        HAL_Delay(1);
+    }
+
+    uint32_t duration_ms = HAL_GetTick() - start_tick;
+
+    if (found == 0)
+        printf("  No devs find!\r\n");
+    else
+        printf("  find devs : %d\r\n", found);
+
+    printf("end of scan  %lu ms\r\n", duration_ms);
+    printf("====================================\r\n\r\n");
 }
 
 /* USER CODE END 0 */
@@ -185,7 +247,15 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 
-  runMotor();
+
+  while(1)
+  {
+	  I2C_ScanExternalBus(&hi2c1);
+	  HAL_Delay(1000);
+  }
+
+
+  //runMotor();
   /* USER CODE END 2 */
 
   /* Infinite loop */

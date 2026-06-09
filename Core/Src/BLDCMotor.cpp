@@ -56,11 +56,11 @@ void BLDCMotor::init() {
   PID_velocity.limit = voltage_limit;
   P_angle.limit = velocity_limit;
 
-  _delay(500);
+ HAL_Delay(500);
   // enable motor
 //  if(monitor_port) monitor_port->println("MOT: Enable driver.");
   enable();
-  _delay(500);
+  HAL_Delay(500);
 }
 
 
