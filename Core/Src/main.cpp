@@ -113,31 +113,51 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
+extern DMA_HandleTypeDef hdma_i2c1_tx;
+extern DMA_HandleTypeDef hdma_i2c1_rx;
+
+
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
-	if (hi2c->Instance == I2C1)
-	    {
-	        dmaError = 1;
+    if (hi2c->Instance == I2C1)
+    {
+        dmaError = 1;
 
-	        // Подробный вывод для отладки
-	        printf("I2C Error! Code=%lu | State=%d | XferCount=%d\r\n",
-	               hi2c->ErrorCode,
-	               hi2c->State,
-	               hi2c->XferCount);
+        printf("I2C Error! Code=%lu | State=%d | XferCount=%d\r\n",
+               hi2c->ErrorCode, hi2c->State, hi2c->XferCount);
 
-	        // === Восстановление после ошибки ===
-	        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);   // Пытаемся корректно завершить текущую транзакцию
-	        HAL_Delay(3);
+        // === 1. Сбрасываем DMA-каналы ===
+        HAL_DMA_Abort(&hdma_i2c1_tx);
+        HAL_DMA_Abort(&hdma_i2c1_rx);
 
-	        HAL_I2C_DeInit(hi2c);                       // Полный сброс I2C периферии
-	        MX_I2C1_Init();                             // Повторная инициализация
+        __HAL_DMA_DISABLE(&hdma_i2c1_tx);
+        __HAL_DMA_DISABLE(&hdma_i2c1_rx);
 
-	        // Сброс флагов
-	        dmaRxComplete = 0;
-	        dmaError = 0;
+        // === 2. Полный сброс I2C1 ===
+        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
+        HAL_Delay(5);
 
-	        printf("I2C recovered after error\r\n");
-	    }
+        __HAL_RCC_I2C1_FORCE_RESET();
+        __HAL_RCC_I2C1_RELEASE_RESET();
+
+        HAL_I2C_DeInit(hi2c);
+        MX_I2C1_Init();
+
+        // === 3. Возвращаем handle в рабочее состояние ===
+        hi2c->State     = HAL_I2C_STATE_READY;
+        hi2c->Mode      = HAL_I2C_MODE_NONE;
+        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+
+        // === 4. Перезапускаем DMA-каналы ===
+        __HAL_DMA_ENABLE(&hdma_i2c1_tx);
+        __HAL_DMA_ENABLE(&hdma_i2c1_rx);
+
+        dmaRxComplete = 0;
+        dmaError = 0;
+
+        printf("I2C + DMA HARD RESET done\r\n");
+        HAL_Delay(20);
+    }
 }
 
 #ifdef __cplusplus
@@ -291,55 +311,46 @@ void run_encoder_test()
 
 
 	while(1)
+	{
+	    uint16_t pos;
+
+	    dmaRxComplete = 0;
+	    dmaError = 0;
+
+	    HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c1, 0x30 << 1, 0x00,
+	                                                    I2C_MEMADD_SIZE_8BIT,
+	                                                    (uint8_t*)&pos, 2);
+
+	    if (status != HAL_OK)
 	    {
-	        uint16_t pos;
-	        dmaRxComplete = 0;
-	        dmaError = 0;
-
-	        HAL_StatusTypeDef res = HAL_I2C_Mem_Read_DMA(&hi2c1, 0x30 << 1, 0x00,
-	                                                     I2C_MEMADD_SIZE_8BIT,
-	                                                     (uint8_t*)&pos, 2);
-
-	        if (res != HAL_OK)
-	        {
-	            printf("Start error: %d\r\n", res);
-	            HAL_Delay(50);
-	            continue;
-	        }
-
-	        // === Ждём завершения с таймаутом и recovery ===
-	        uint32_t timeout = HAL_GetTick() + 150;   // 150 мс таймаут
-	        while (dmaRxComplete == 0 && dmaError == 0)
-	        {
-	            if (HAL_GetTick() > timeout)
-	            {
-	                printf("DMA TIMEOUT! Forcing recovery...\r\n");
-
-	                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-	                HAL_Delay(5);
-
-	                HAL_I2C_DeInit(&hi2c1);
-	                MX_I2C1_Init();
-
-	                dmaRxComplete = 0;
-	                dmaError = 0;
-	                break;
-	            }
-	        }
-
-	        if (dmaRxComplete)
-	        {
-	            printf("DMA Read OK, pos = 0x%04X\r\n", pos);
-	            dmaRxComplete = 0;
-	        }
-	        else if (dmaError)
-	        {
-	            printf("DMA Error occurred\r\n");
-	            dmaError = 0;
-	        }
-
-	        HAL_Delay(100);   // 100 мс между чтениями — рекомендуется
+	        printf("Start failed with code %d\r\n", status);
+	        HAL_Delay(50);
+	        continue;
 	    }
+
+	    // Ожидание с таймаутом (как я давал раньше)
+	    uint32_t timeout = HAL_GetTick() + 150;
+	    while (dmaRxComplete == 0 && dmaError == 0)
+	    {
+	        if (HAL_GetTick() > timeout)
+	        {
+	            printf("DMA TIMEOUT\r\n");
+	            HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+	            HAL_Delay(5);
+	            HAL_I2C_DeInit(&hi2c1);
+	            MX_I2C1_Init();
+	            hi2c1.State = HAL_I2C_STATE_READY;
+	            break;
+	        }
+	    }
+
+	    if (dmaRxComplete)
+	    {
+	        printf("DMA Read OK, pos = 0x%04X\r\n", pos);
+	    }
+
+	    HAL_Delay(100);
+	}
 
 //	while(1)
 //	{
