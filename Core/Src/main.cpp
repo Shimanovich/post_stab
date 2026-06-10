@@ -270,6 +270,8 @@ void run_encoder_test()
 	yaw_encoder.begin(&hi2c1, 0x31);
 	frameImu.begin(&hi2c1, 0x68);
 
+	DWT_Init();
+
 	while(1)
 	{
 		uint16_t pos;
@@ -279,13 +281,13 @@ void run_encoder_test()
 
 		uint32_t end;
 
-		DWT_Init();
+
 
 		//HAL_I2C_Mem_Read_DMA(hi2c, DevAddress, MemAddress, MemAddSize, pData, Size)
 
 
 		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
-		HAL_Delay(2);
+		HAL_Delay(20);
 		continue;
 
 
