@@ -281,72 +281,67 @@ void run_encoder_test()
 
 		uint32_t end;
 
-
-
-		//HAL_I2C_Mem_Read_DMA(hi2c, DevAddress, MemAddress, MemAddSize, pData, Size)
-
-
 		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
 		HAL_Delay(20);
 		continue;
 
-
-		DWT->CYCCNT = 0;
-		res= pitch_encoder.getAbsolutePosition(&pos);
-		end = DWT->CYCCNT;
-        if (res == HAL_OK)
-        {
-        	pitch_encoder.getAngleDegrees(&angle);
-#if DIAG_PRINT
-            printf(">pA:%f\n",angle);
-            printf(">pP:%d\n",pos);
-            printf(">dtp:%d\n",end / (SystemCoreClock / 1000000));
-#endif
-
-		}
-        else
-        {
-        	//printf("Enc pitch err %d \n", res);
-        }
-
-        DWT->CYCCNT = 0;
-		res= yaw_encoder.getAbsolutePosition(&pos);
-		end = DWT->CYCCNT;
-        if (res == HAL_OK)
-        {
-        	yaw_encoder.getAngleDegrees(&angle);
-#if DIAG_PRINT
-            printf(">yA:%f\n",angle);
-            printf(">yP:%d\n",pos);
-            printf(">dty:%d\n",end / (SystemCoreClock / 1000000));
-#endif
-		}
-        else
-        {
-          	//printf("Enc yaw err %d \n", res);
-        }
-
-        DWT->CYCCNT = 0;
-        float gyro[3], accel[3], temp;
-		int gres= frameImu.read(gyro, accel, &temp);
-		end = DWT->CYCCNT;
-        if (gres == ICM20602_OK)
-        {
-#if DIAG_PRINT
-            printf(">g0:%f\n",gyro[0]);
-            printf(">g1:%f\n",gyro[1]);
-            printf(">g2:%f\n",gyro[2]);
-            printf(">dtg:%d\n",end / (SystemCoreClock / 1000000));
-#endif
-		}
-        else
-        {
-          	printf("Enc yaw err %d \n", res);
-        }
-
-
-
-        HAL_Delay(1);
+//
+//		DWT->CYCCNT = 0;
+//		res= pitch_encoder.getAbsolutePosition(&pos);
+//		end = DWT->CYCCNT;
+//        if (res == HAL_OK)
+//        {
+//        	pitch_encoder.getAngleDegrees(&angle);
+//#if DIAG_PRINT
+//            printf(">pA:%f\n",angle);
+//            printf(">pP:%d\n",pos);
+//            printf(">dtp:%d\n",end / (SystemCoreClock / 1000000));
+//#endif
+//
+//		}
+//        else
+//        {
+//        	//printf("Enc pitch err %d \n", res);
+//        }
+//
+//        DWT->CYCCNT = 0;
+//		res= yaw_encoder.getAbsolutePosition(&pos);
+//		end = DWT->CYCCNT;
+//        if (res == HAL_OK)
+//        {
+//        	yaw_encoder.getAngleDegrees(&angle);
+//#if DIAG_PRINT
+//            printf(">yA:%f\n",angle);
+//            printf(">yP:%d\n",pos);
+//            printf(">dty:%d\n",end / (SystemCoreClock / 1000000));
+//#endif
+//		}
+//        else
+//        {
+//          	//printf("Enc yaw err %d \n", res);
+//        }
+//
+//        DWT->CYCCNT = 0;
+//        float gyro[3], accel[3], temp;
+//		int gres= frameImu.read(gyro, accel, &temp);
+//		end = DWT->CYCCNT;
+//        if (gres == ICM20602_OK)
+//        {
+//#if DIAG_PRINT
+//            printf(">g0:%f\n",gyro[0]);
+//            printf(">g1:%f\n",gyro[1]);
+//            printf(">g2:%f\n",gyro[2]);
+//            printf(">dtg:%d\n",end / (SystemCoreClock / 1000000));
+//#endif
+//		}
+//        else
+//        {
+//          	printf("Enc yaw err %d \n", res);
+//        }
+//
+//
+//
+//        HAL_Delay(1);
 	}
 }
 

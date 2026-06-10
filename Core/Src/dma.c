@@ -40,6 +40,9 @@ void MX_DMA_Init(void)
         Error_Handler();
     }
 
+    HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+
     __HAL_LINKDMA(&hi2c1, hdmatx, hdma_i2c1_tx);
 
     /* I2C1_RX Init */
@@ -56,8 +59,10 @@ void MX_DMA_Init(void)
     {
         Error_Handler();
     }
+    HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
 
-    __HAL_LINKDMA(&hi2c1, hdmarx, hdma_i2c1_rx);
+      __HAL_LINKDMA(&hi2c1, hdmarx, hdma_i2c1_rx);
 }
 
 /**
