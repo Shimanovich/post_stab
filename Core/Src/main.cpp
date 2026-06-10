@@ -99,7 +99,7 @@ void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
     if (hi2c->Instance == I2C1)
     {
     	dmaTxComplete = 1;
-    	printf("Tx_intr\n\r");
+    	//printf("Tx_intr\n\r");
     }
 
 }
@@ -109,7 +109,7 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
     if (hi2c->Instance == I2C1)
     {
         dmaRxComplete = 1;
-        printf("Rx_intr\n\r");
+        //printf("Rx_intr\n\r");
     }
 }
 
@@ -118,7 +118,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
     if (hi2c->Instance == I2C1)
     {
         dmaError = 1;
-        printf("Err %d\n\r",hi2c->ErrorCode);
+       // printf("Err %d\n\r",hi2c->ErrorCode);
         // Здесь можно посмотреть причину: hi2c->ErrorCode
     }
 }
@@ -262,7 +262,7 @@ void DWT_Init(void)
 }
 
 
-#define DIAG_PRINT 0
+#define DIAG_PRINT 1
 
 void run_encoder_test()
 {
@@ -272,19 +272,55 @@ void run_encoder_test()
 
 	DWT_Init();
 
+
 	while(1)
 	{
-		uint16_t pos;
-		float angle;
-		HAL_StatusTypeDef res;
+	    uint16_t pos;
 
+	    HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c1, 0x30 << 1, 0x00,
+	                                                    I2C_MEMADD_SIZE_8BIT,
+	                                                    (uint8_t*)&pos, 2);
 
-		uint32_t end;
+	    if (status != HAL_OK)
+	    {
+	        printf("Mem_Read_DMA start failed: %d\r\n", status);
+	    }
 
-		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
-		HAL_Delay(20);
-		continue;
+	    // Ждём либо завершения, либо ошибки (максимум 50 мс)
+	    uint32_t timeout = HAL_GetTick() + 50;
+	    while (dmaRxComplete == 0 && dmaError == 0 && HAL_GetTick() < timeout)
+	    {
+	        // можно добавить __WFI() для экономии энергии
+	    }
 
+	    if (dmaRxComplete)
+	    {
+	        printf("DMA Read OK, pos = 0x%04X\r\n", pos);
+	        dmaRxComplete = 0;
+	    }
+	    else if (dmaError)
+	    {
+	        printf("DMA Read failed\r\n");
+	        dmaError = 0;
+	        // recovery уже сделан в ErrorCallback
+	    }
+
+	    HAL_Delay(50);   // увеличил задержку для стабильности
+	}
+
+//	while(1)
+//	{
+//		uint16_t pos;
+//		float angle;
+//		HAL_StatusTypeDef res;
+//
+//
+//		uint32_t end;
+//
+////		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
+////		HAL_Delay(20);
+////		continue;
+//
 //
 //		DWT->CYCCNT = 0;
 //		res= pitch_encoder.getAbsolutePosition(&pos);
@@ -301,7 +337,7 @@ void run_encoder_test()
 //		}
 //        else
 //        {
-//        	//printf("Enc pitch err %d \n", res);
+//        	printf("Enc pitch err %d \n", res);
 //        }
 //
 //        DWT->CYCCNT = 0;
@@ -318,7 +354,7 @@ void run_encoder_test()
 //		}
 //        else
 //        {
-//          	//printf("Enc yaw err %d \n", res);
+//          	printf("Enc yaw err %d \n", res);
 //        }
 //
 //        DWT->CYCCNT = 0;
@@ -342,7 +378,7 @@ void run_encoder_test()
 //
 //
 //        HAL_Delay(1);
-	}
+//	}
 }
 
 /* USER CODE END 0 */
