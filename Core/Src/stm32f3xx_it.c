@@ -22,6 +22,7 @@
 #include "stm32f3xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+extern I2C_HandleTypeDef hi2c1;
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -175,6 +176,24 @@ void PendSV_Handler(void)
   /* USER CODE BEGIN PendSV_IRQn 1 */
 
   /* USER CODE END PendSV_IRQn 1 */
+}
+
+
+
+/**
+  * @brief This function handles DMA1 channel 6 interrupt (I2C1 TX).
+  */
+void DMA1_Channel6_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(hi2c1.hdmatx);
+}
+
+/**
+  * @brief This function handles DMA1 channel 7 interrupt (I2C1 RX).
+  */
+void DMA1_Channel7_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(hi2c1.hdmarx);
 }
 
 /**

@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dma.h"
 #include "i2c.h"
 #include "tim.h"
 #include "usart.h"
@@ -31,6 +32,8 @@
 #include "BLDCMotor.h"
 #include "FOCMotor.h"
 #include "stdio.h"
+#include "AM4096.h"
+#include "icm20602.h"
 
 /* USER CODE END Includes */
 
@@ -73,6 +76,10 @@ BLDCDriver3PWM driverMot1(&htim3, TIM_CHANNEL_2, &htim3, TIM_CHANNEL_3, &htim3, 
 BLDCMotor motor0 = BLDCMotor(7);
 BLDCMotor motor1 = BLDCMotor(7);
 
+AM4096 		pitch_encoder;
+AM4096 		yaw_encoder;
+ICM20602  	frameImu;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -81,6 +88,41 @@ int _write(int file, char *ptr, int len)
     HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, HAL_MAX_DELAY);
     return len;
 }
+
+
+volatile uint8_t dmaTxComplete = 0;
+volatile uint8_t dmaRxComplete = 0;
+volatile uint8_t dmaError = 0;
+
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+    	dmaTxComplete = 1;
+    	printf("Tx_intr\n\r");
+    }
+
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        dmaRxComplete = 1;
+        printf("Rx_intr\n\r");
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        dmaError = 1;
+        printf("Err %d\n\r",hi2c->ErrorCode);
+        // Здесь можно посмотреть причину: hi2c->ErrorCode
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif
@@ -207,6 +249,105 @@ void I2C_ScanExternalBus(I2C_HandleTypeDef *hi2c)
     printf("====================================\r\n\r\n");
 }
 
+void DWT_Init(void)
+{
+    // Включаем доступ к DWT
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+
+    // Сбрасываем счётчик (по желанию — можно не сбрасывать)
+    DWT->CYCCNT = 0;
+
+    // Включаем счётчик циклов
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+
+#define DIAG_PRINT 0
+
+void run_encoder_test()
+{
+	pitch_encoder.begin(&hi2c1, 0x30);
+	yaw_encoder.begin(&hi2c1, 0x31);
+	frameImu.begin(&hi2c1, 0x68);
+
+	while(1)
+	{
+		uint16_t pos;
+		float angle;
+		HAL_StatusTypeDef res;
+
+
+		uint32_t end;
+
+		DWT_Init();
+
+		//HAL_I2C_Mem_Read_DMA(hi2c, DevAddress, MemAddress, MemAddSize, pData, Size)
+
+
+		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
+		HAL_Delay(2);
+		continue;
+
+
+		DWT->CYCCNT = 0;
+		res= pitch_encoder.getAbsolutePosition(&pos);
+		end = DWT->CYCCNT;
+        if (res == HAL_OK)
+        {
+        	pitch_encoder.getAngleDegrees(&angle);
+#if DIAG_PRINT
+            printf(">pA:%f\n",angle);
+            printf(">pP:%d\n",pos);
+            printf(">dtp:%d\n",end / (SystemCoreClock / 1000000));
+#endif
+
+		}
+        else
+        {
+        	//printf("Enc pitch err %d \n", res);
+        }
+
+        DWT->CYCCNT = 0;
+		res= yaw_encoder.getAbsolutePosition(&pos);
+		end = DWT->CYCCNT;
+        if (res == HAL_OK)
+        {
+        	yaw_encoder.getAngleDegrees(&angle);
+#if DIAG_PRINT
+            printf(">yA:%f\n",angle);
+            printf(">yP:%d\n",pos);
+            printf(">dty:%d\n",end / (SystemCoreClock / 1000000));
+#endif
+		}
+        else
+        {
+          	//printf("Enc yaw err %d \n", res);
+        }
+
+        DWT->CYCCNT = 0;
+        float gyro[3], accel[3], temp;
+		int gres= frameImu.read(gyro, accel, &temp);
+		end = DWT->CYCCNT;
+        if (gres == ICM20602_OK)
+        {
+#if DIAG_PRINT
+            printf(">g0:%f\n",gyro[0]);
+            printf(">g1:%f\n",gyro[1]);
+            printf(">g2:%f\n",gyro[2]);
+            printf(">dtg:%d\n",end / (SystemCoreClock / 1000000));
+#endif
+		}
+        else
+        {
+          	printf("Enc yaw err %d \n", res);
+        }
+
+
+
+        HAL_Delay(1);
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -225,6 +366,7 @@ int main(void)
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
+
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
@@ -239,6 +381,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
@@ -246,12 +389,13 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  printf("Heloo\n");
 
 
+  I2C_ScanExternalBus(&hi2c1);
   while(1)
   {
-	  I2C_ScanExternalBus(&hi2c1);
-	  HAL_Delay(1000);
+	  run_encoder_test();
   }
 
 
