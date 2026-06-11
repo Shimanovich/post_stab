@@ -93,44 +93,44 @@ int _write(int file, char *ptr, int len)
 volatile uint8_t i2cRxComplete = 0;
 volatile uint8_t i2cError = 0;
 
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
-{
-    if (hi2c->Instance == I2C1)
-    {
-        i2cRxComplete = 1;
-        // printf("Rx_intr\n\r");   // можно раскомментировать для отладки
-    }
-}
-
-void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
-{
-    if (hi2c->Instance == I2C1)
-    {
-        i2cError = 1;
-        printf("I2C Error! Code=%lu | State=%d | XferCount=%d\r\n",
-               hi2c->ErrorCode, hi2c->State, hi2c->XferCount);
-
-        // Полный recovery
-        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
-        HAL_Delay(5);
-
-        __HAL_RCC_I2C1_FORCE_RESET();
-        __HAL_RCC_I2C1_RELEASE_RESET();
-
-        HAL_I2C_DeInit(hi2c);
-        MX_I2C1_Init();
-
-        hi2c->State     = HAL_I2C_STATE_READY;
-        hi2c->Mode      = HAL_I2C_MODE_NONE;
-        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
-
-        i2cRxComplete = 0;
-        i2cError = 0;
-
-        printf("I2C recovered\r\n");
-        HAL_Delay(15);
-    }
-}
+//void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+//{
+//    if (hi2c->Instance == I2C1)
+//    {
+//        i2cRxComplete = 1;
+//        // printf("Rx_intr\n\r");   // можно раскомментировать для отладки
+//    }
+//}
+//
+//void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+//{
+//    if (hi2c->Instance == I2C1)
+//    {
+//        i2cError = 1;
+//        printf("I2C Error! Code=%lu | State=%d | XferCount=%d\r\n",
+//               hi2c->ErrorCode, hi2c->State, hi2c->XferCount);
+//
+//        // Полный recovery
+//        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
+//        HAL_Delay(5);
+//
+//        __HAL_RCC_I2C1_FORCE_RESET();
+//        __HAL_RCC_I2C1_RELEASE_RESET();
+//
+//        HAL_I2C_DeInit(hi2c);
+//        MX_I2C1_Init();
+//
+//        hi2c->State     = HAL_I2C_STATE_READY;
+//        hi2c->Mode      = HAL_I2C_MODE_NONE;
+//        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+//
+//        i2cRxComplete = 0;
+//        i2cError = 0;
+//
+//        printf("I2C recovered\r\n");
+//        HAL_Delay(15);
+//    }
+//}
 
 
 #ifdef __cplusplus
