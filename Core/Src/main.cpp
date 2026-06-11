@@ -93,14 +93,12 @@ int _write(int file, char *ptr, int len)
 volatile uint8_t i2cRxComplete = 0;
 volatile uint8_t i2cError = 0;
 
-// Удалите старые dma* переменные, если они больше не используются
-
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C1)
     {
         i2cRxComplete = 1;
-        printf("Rx_intr\n\r");
+        // printf("Rx_intr\n\r");   // можно раскомментировать для отладки
     }
 }
 
@@ -112,7 +110,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
         printf("I2C Error! Code=%lu | State=%d | XferCount=%d\r\n",
                hi2c->ErrorCode, hi2c->State, hi2c->XferCount);
 
-        // Простой и надёжный recovery
+        // Полный recovery
         HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
         HAL_Delay(5);
 
@@ -122,14 +120,15 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
         HAL_I2C_DeInit(hi2c);
         MX_I2C1_Init();
 
-        hi2c->State = HAL_I2C_STATE_READY;
-        hi2c->Mode  = HAL_I2C_MODE_NONE;
+        hi2c->State     = HAL_I2C_STATE_READY;
+        hi2c->Mode      = HAL_I2C_MODE_NONE;
+        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
 
         i2cRxComplete = 0;
         i2cError = 0;
 
         printf("I2C recovered\r\n");
-        HAL_Delay(10);
+        HAL_Delay(15);
     }
 }
 
@@ -281,128 +280,177 @@ void run_encoder_test()
 	yaw_encoder.begin(&hi2c1, 0x31);
 	frameImu.begin(&hi2c1, 0x68);
 
-	DWT_Init();
-
-
-	while(1)
-	    {
-	        uint16_t pos = 0;
-	        i2cRxComplete = 0;
-	        i2cError = 0;
-
-	        HAL_StatusTypeDef status = HAL_I2C_Mem_Read_IT(&hi2c1,
-	                                                       0x30 << 1,
-	                                                       0x00,
-	                                                       I2C_MEMADD_SIZE_8BIT,
-	                                                       (uint8_t*)&pos,
-	                                                       2);
-
-	        if (status != HAL_OK)
-	        {
-	            printf("I2C_IT start failed: %d\r\n", status);
-	            HAL_Delay(50);
-	            continue;
-	        }
-
-	        // Ожидание завершения с таймаутом
-	        uint32_t timeout = HAL_GetTick() + 100;  // 100 мс
-	        while (i2cRxComplete == 0 && i2cError == 0)
-	        {
-	            if (HAL_GetTick() > timeout)
-	            {
-	                printf("I2C Timeout!\r\n");
-	                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-	                HAL_Delay(5);
-	                break;
-	            }
-	        }
-
-	        if (i2cRxComplete)
-	        {
-	            printf("I2C Read OK, pos = 0x%04X\r\n", pos);
-	            i2cRxComplete = 0;
-	        }
-	        else if (i2cError)
-	        {
-	            i2cError = 0;
-	            // recovery уже выполнен в ErrorCallback
-	        }
-
-	        HAL_Delay(80);   // 80 мс между чтениями — оптимально для AM4096
-	    }
-
 
 //	while(1)
-//	{
-//		uint16_t pos;
-//		float angle;
-//		HAL_StatusTypeDef res;
+//	    {
+//	        uint16_t pos = 0;
+//	        i2cRxComplete = 0;
+//	        i2cError = 0;
 //
+//	        printf("INIT START...\r\n");
 //
-//		uint32_t end;
+//	        // === Проверка состояния перед стартом ===
+//	        if (hi2c1.State != HAL_I2C_STATE_READY)
+//	        {
+//	            printf("State not READY, forcing recovery...\r\n");
+//	            HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//	            HAL_Delay(5);
 //
-////		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
-////		HAL_Delay(20);
-////		continue;
+//	            __HAL_RCC_I2C1_FORCE_RESET();
+//	            __HAL_RCC_I2C1_RELEASE_RESET();
+//	            HAL_I2C_DeInit(&hi2c1);
+//	            MX_I2C1_Init();
+//	            hi2c1.State = HAL_I2C_STATE_READY;
+//	            HAL_Delay(10);
+//	        }
 //
+//	        HAL_StatusTypeDef status = HAL_I2C_Mem_Read_IT(&hi2c1,
+//	                                                       0x30 << 1,
+//	                                                       0x00,
+//	                                                       I2C_MEMADD_SIZE_8BIT,
+//	                                                       (uint8_t*)&pos,
+//	                                                       2);
 //
-//		DWT->CYCCNT = 0;
-//		res= pitch_encoder.getAbsolutePosition(&pos);
-//		end = DWT->CYCCNT;
-//        if (res == HAL_OK)
-//        {
-//        	pitch_encoder.getAngleDegrees(&angle);
-//#if DIAG_PRINT
-//            printf(">pA:%f\n",angle);
-//            printf(">pP:%d\n",pos);
-//            printf(">dtp:%d\n",end / (SystemCoreClock / 1000000));
-//#endif
+//	        if (status != HAL_OK)
+//	        {
+//	            if (status == HAL_BUSY)
+//	            {
+//	                printf("BUSY detected on start, recovering...\r\n");
+//	                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//	                HAL_Delay(5);
 //
-//		}
-//        else
-//        {
-//        	printf("Enc pitch err %d \n", res);
-//        }
+//	                __HAL_RCC_I2C1_FORCE_RESET();
+//	                __HAL_RCC_I2C1_RELEASE_RESET();
+//	                HAL_I2C_DeInit(&hi2c1);
+//	                MX_I2C1_Init();
+//	                hi2c1.State = HAL_I2C_STATE_READY;
+//	                i2cRxComplete = 0;
+//	                i2cError = 0;
+//	                HAL_Delay(15);
+//	            }
+//	            else
+//	            {
+//	                printf("I2C_IT start failed: %d\r\n", status);
+//	            }
+//	            HAL_Delay(50);
+//	            continue;
+//	        }
 //
-//        DWT->CYCCNT = 0;
-//		res= yaw_encoder.getAbsolutePosition(&pos);
-//		end = DWT->CYCCNT;
-//        if (res == HAL_OK)
-//        {
-//        	yaw_encoder.getAngleDegrees(&angle);
-//#if DIAG_PRINT
-//            printf(">yA:%f\n",angle);
-//            printf(">yP:%d\n",pos);
-//            printf(">dty:%d\n",end / (SystemCoreClock / 1000000));
-//#endif
-//		}
-//        else
-//        {
-//          	printf("Enc yaw err %d \n", res);
-//        }
+//	        // Ожидание с таймаутом
+//	        uint32_t timeout = HAL_GetTick() + 120;   // чуть увеличил
+//	        while (i2cRxComplete == 0 && i2cError == 0)
+//	        {
+//	            if (HAL_GetTick() > timeout)
+//	            {
+//	                printf("I2C Timeout! Doing full recovery...\r\n");
 //
-//        DWT->CYCCNT = 0;
-//        float gyro[3], accel[3], temp;
-//		int gres= frameImu.read(gyro, accel, &temp);
-//		end = DWT->CYCCNT;
-//        if (gres == ICM20602_OK)
-//        {
-//#if DIAG_PRINT
-//            printf(">g0:%f\n",gyro[0]);
-//            printf(">g1:%f\n",gyro[1]);
-//            printf(">g2:%f\n",gyro[2]);
-//            printf(">dtg:%d\n",end / (SystemCoreClock / 1000000));
-//#endif
-//		}
-//        else
-//        {
-//          	printf("Enc yaw err %d \n", res);
-//        }
+//	                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//	                HAL_Delay(5);
 //
+//	                __HAL_RCC_I2C1_FORCE_RESET();
+//	                __HAL_RCC_I2C1_RELEASE_RESET();
+//	                HAL_I2C_DeInit(&hi2c1);
+//	                MX_I2C1_Init();
+//	                hi2c1.State = HAL_I2C_STATE_READY;
 //
+//	                i2cRxComplete = 0;
+//	                i2cError = 0;
+//	                HAL_Delay(15);
+//	                break;
+//	            }
+//	        }
 //
-//        HAL_Delay(1);
-//	}
+//	        if (i2cRxComplete)
+//	        {
+//	            printf("I2C Read OK, pos = 0x%04X\r\n", pos);
+//	            i2cRxComplete = 0;
+//	        }
+//	        else if (i2cError)
+//	        {
+//	            i2cError = 0;
+//	        }
+//
+//	        HAL_Delay(80);   // 80 мс между чтениями
+//	    }
+
+
+
+
+
+
+	DWT_Init();
+
+	while(1)
+	{
+		uint16_t pos;
+		float angle;
+		HAL_StatusTypeDef res;
+
+
+		uint32_t end;
+
+//		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
+//		HAL_Delay(20);
+//		continue;
+
+
+		DWT->CYCCNT = 0;
+		res= pitch_encoder.getAbsolutePosition(&pos);
+		end = DWT->CYCCNT;
+        if (res == HAL_OK)
+        {
+        	pitch_encoder.getAngleDegrees(&angle);
+#if DIAG_PRINT
+            printf(">pA:%f\n",angle);
+            printf(">pP:%d\n",pos);
+            printf(">dtp:%d\n",end / (SystemCoreClock / 1000000));
+#endif
+
+		}
+        else
+        {
+        	printf("Enc pitch err %d \n", res);
+        }
+
+        DWT->CYCCNT = 0;
+		res= yaw_encoder.getAbsolutePosition(&pos);
+		end = DWT->CYCCNT;
+        if (res == HAL_OK)
+        {
+        	yaw_encoder.getAngleDegrees(&angle);
+#if DIAG_PRINT
+            printf(">yA:%f\n",angle);
+            printf(">yP:%d\n",pos);
+            printf(">dty:%d\n",end / (SystemCoreClock / 1000000));
+#endif
+		}
+        else
+        {
+          	printf("Enc yaw err %d \n", res);
+        }
+
+        DWT->CYCCNT = 0;
+        float gyro[3], accel[3], temp;
+		int gres= frameImu.read(gyro, accel, &temp);
+		end = DWT->CYCCNT;
+        if (gres == ICM20602_OK)
+        {
+#if DIAG_PRINT
+            printf(">g0:%f\n",gyro[0]);
+            printf(">g1:%f\n",gyro[1]);
+            printf(">g2:%f\n",gyro[2]);
+            printf(">dtg:%d\n",end / (SystemCoreClock / 1000000));
+#endif
+		}
+        else
+        {
+          	printf("Enc yaw err %d \n", res);
+        }
+
+
+
+        HAL_Delay(1);
+	}
 }
 
 /* USER CODE END 0 */
