@@ -302,7 +302,7 @@ void DWT_Init(void)
 #define DIAG_PRINT 1
 
 
-#if 0
+#if 1
 void run_encoder_test()
 {
 	pitch_encoder.begin(&hi2c1, 0x30);
@@ -386,97 +386,97 @@ void run_encoder_test()
 #endif
 
 
-void run_encoder_test()
-{
-    pitch_encoder.begin(&hi2c1, 0x30);
-    yaw_encoder.begin(&hi2c1, 0x31);
-    frameImu.begin(&hi2c1, 0x68);
-
-    while(1)
-    {
-        uint16_t pos = 0;
-        i2cRxComplete = 0;
-        i2cError = 0;
-
-        // Защита от BUSY-состояния
-        if (hi2c1.State != HAL_I2C_STATE_READY)
-        {
-            printf("I2C not READY, forcing recovery...\r\n");
-            HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-            HAL_Delay(5);
-
-            __HAL_RCC_I2C1_FORCE_RESET();
-            __HAL_RCC_I2C1_RELEASE_RESET();
-            HAL_I2C_DeInit(&hi2c1);
-            MX_I2C1_Init();
-            hi2c1.State = HAL_I2C_STATE_READY;
-            HAL_Delay(10);
-        }
-
-        HAL_StatusTypeDef status = HAL_I2C_Mem_Read_IT(&hi2c1,
-                                                       0x30 << 1,
-                                                       0x00,
-                                                       I2C_MEMADD_SIZE_8BIT,
-                                                       (uint8_t*)&pos,
-                                                       2);
-
-
-
-        if (status != HAL_OK)
-        {
-            printf("I2C_IT start failed: %d\r\n", status);
-            if (status == HAL_BUSY)
-            {
-                // Дополнительный recovery при BUSY
-                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-                HAL_Delay(5);
-                __HAL_RCC_I2C1_FORCE_RESET();
-                __HAL_RCC_I2C1_RELEASE_RESET();
-                HAL_I2C_DeInit(&hi2c1);
-                MX_I2C1_Init();
-                hi2c1.State = HAL_I2C_STATE_READY;
-                HAL_Delay(15);
-            }
-            HAL_Delay(50);
-            continue;
-        }
-
-        // Ожидание с таймаутом
-        uint32_t timeout = HAL_GetTick() + 120;
-        while (i2cRxComplete == 0 && i2cError == 0)
-        {
-            if (HAL_GetTick() > timeout)
-            {
-                printf("I2C Timeout — recovery...\r\n");
-                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-                HAL_Delay(5);
-
-                __HAL_RCC_I2C1_FORCE_RESET();
-                __HAL_RCC_I2C1_RELEASE_RESET();
-                HAL_I2C_DeInit(&hi2c1);
-                MX_I2C1_Init();
-                hi2c1.State = HAL_I2C_STATE_READY;
-
-                i2cRxComplete = 0;
-                i2cError = 0;
-                HAL_Delay(15);
-                break;
-            }
-        }
-
-        if (i2cRxComplete)
-        {
-            printf("I2C Read OK, pos=0x%04X\r\n", pos);
-            i2cRxComplete = 0;
-        }
-        else if (i2cError)
-        {
-            i2cError = 0;
-        }
-
-        HAL_Delay(80);   // 80 мс между чтениями
-    }
-}
+//void run_encoder_test()
+//{
+//    pitch_encoder.begin(&hi2c1, 0x30);
+//    yaw_encoder.begin(&hi2c1, 0x31);
+//    frameImu.begin(&hi2c1, 0x68);
+//
+//    while(1)
+//    {
+//        uint16_t pos = 0;
+//        i2cRxComplete = 0;
+//        i2cError = 0;
+//
+//        // Защита от BUSY-состояния
+//        if (hi2c1.State != HAL_I2C_STATE_READY)
+//        {
+//            printf("I2C not READY, forcing recovery...\r\n");
+//            HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//            HAL_Delay(5);
+//
+//            __HAL_RCC_I2C1_FORCE_RESET();
+//            __HAL_RCC_I2C1_RELEASE_RESET();
+//            HAL_I2C_DeInit(&hi2c1);
+//            MX_I2C1_Init();
+//            hi2c1.State = HAL_I2C_STATE_READY;
+//            HAL_Delay(10);
+//        }
+//
+//        HAL_StatusTypeDef status = HAL_I2C_Mem_Read_IT(&hi2c1,
+//                                                       0x30 << 1,
+//                                                       0x00,
+//                                                       I2C_MEMADD_SIZE_8BIT,
+//                                                       (uint8_t*)&pos,
+//                                                       2);
+//
+//
+//
+//        if (status != HAL_OK)
+//        {
+//            printf("I2C_IT start failed: %d\r\n", status);
+//            if (status == HAL_BUSY)
+//            {
+//                // Дополнительный recovery при BUSY
+//                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//                HAL_Delay(5);
+//                __HAL_RCC_I2C1_FORCE_RESET();
+//                __HAL_RCC_I2C1_RELEASE_RESET();
+//                HAL_I2C_DeInit(&hi2c1);
+//                MX_I2C1_Init();
+//                hi2c1.State = HAL_I2C_STATE_READY;
+//                HAL_Delay(15);
+//            }
+//            HAL_Delay(50);
+//            continue;
+//        }
+//
+//        // Ожидание с таймаутом
+//        uint32_t timeout = HAL_GetTick() + 120;
+//        while (i2cRxComplete == 0 && i2cError == 0)
+//        {
+//            if (HAL_GetTick() > timeout)
+//            {
+//                printf("I2C Timeout — recovery...\r\n");
+//                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//                HAL_Delay(5);
+//
+//                __HAL_RCC_I2C1_FORCE_RESET();
+//                __HAL_RCC_I2C1_RELEASE_RESET();
+//                HAL_I2C_DeInit(&hi2c1);
+//                MX_I2C1_Init();
+//                hi2c1.State = HAL_I2C_STATE_READY;
+//
+//                i2cRxComplete = 0;
+//                i2cError = 0;
+//                HAL_Delay(15);
+//                break;
+//            }
+//        }
+//
+//        if (i2cRxComplete)
+//        {
+//            printf("I2C Read OK, pos=0x%04X\r\n", pos);
+//            i2cRxComplete = 0;
+//        }
+//        else if (i2cError)
+//        {
+//            i2cError = 0;
+//        }
+//
+//        HAL_Delay(80);   // 80 мс между чтениями
+//    }
+//}
 
 /* USER CODE END 0 */
 
