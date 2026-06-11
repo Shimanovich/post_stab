@@ -89,48 +89,75 @@ int _write(int file, char *ptr, int len)
     return len;
 }
 
-// === Глобальные флаги для I2C IT ===
+// === I2C Interrupt Mode Flags ===
 volatile uint8_t i2cRxComplete = 0;
 volatile uint8_t i2cError = 0;
 
-//void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
-//{
-//    if (hi2c->Instance == I2C1)
-//    {
-//        i2cRxComplete = 1;
-//        // printf("Rx_intr\n\r");   // можно раскомментировать для отладки
-//    }
-//}
-//
-//void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
-//{
-//    if (hi2c->Instance == I2C1)
-//    {
-//        i2cError = 1;
-//        printf("I2C Error! Code=%lu | State=%d | XferCount=%d\r\n",
-//               hi2c->ErrorCode, hi2c->State, hi2c->XferCount);
-//
-//        // Полный recovery
-//        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
-//        HAL_Delay(5);
-//
-//        __HAL_RCC_I2C1_FORCE_RESET();
-//        __HAL_RCC_I2C1_RELEASE_RESET();
-//
-//        HAL_I2C_DeInit(hi2c);
-//        MX_I2C1_Init();
-//
-//        hi2c->State     = HAL_I2C_STATE_READY;
-//        hi2c->Mode      = HAL_I2C_MODE_NONE;
-//        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
-//
-//        i2cRxComplete = 0;
-//        i2cError = 0;
-//
-//        printf("I2C recovered\r\n");
-//        HAL_Delay(15);
-//    }
-//}
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2cRxComplete = 1;
+        printf("I2C Rx complete\n\r");   // раскомментируй при отладке
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2cError = 1;
+        printf("I2C Error! Code=%lu State=%d Xfer=%d\r\n",
+               hi2c->ErrorCode, hi2c->State, hi2c->XferCount);
+
+        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
+        HAL_Delay(3);
+
+        // Простая попытка разблокировать шину (если SDA прижат)
+        if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET)
+        {
+            printf("SDA stuck low - trying bus recovery\r\n");
+            // Переводим SCL в output и тактируем 9 раз
+            GPIO_InitTypeDef GPIO_InitStruct = {0};
+            GPIO_InitStruct.Pin = GPIO_PIN_15;
+            GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+            GPIO_InitStruct.Pull = GPIO_PULLUP;
+            GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+            HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+            for (int i = 0; i < 9; i++)
+            {
+                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+                HAL_Delay(1);
+                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+                HAL_Delay(1);
+            }
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+            HAL_Delay(5);
+
+            // Возвращаем SCL обратно в AF
+            GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+            GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+            HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+        }
+
+        __HAL_RCC_I2C1_FORCE_RESET();
+        __HAL_RCC_I2C1_RELEASE_RESET();
+
+        HAL_I2C_DeInit(hi2c);
+        MX_I2C1_Init();
+
+        hi2c->State     = HAL_I2C_STATE_READY;
+        hi2c->Mode      = HAL_I2C_MODE_NONE;
+        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+
+        i2cRxComplete = 0;
+        i2cError = 0;
+
+        printf("I2C recovered\r\n");
+        HAL_Delay(20);
+    }
+}
 
 
 #ifdef __cplusplus
@@ -274,107 +301,13 @@ void DWT_Init(void)
 
 #define DIAG_PRINT 1
 
+
+#if 0
 void run_encoder_test()
 {
 	pitch_encoder.begin(&hi2c1, 0x30);
 	yaw_encoder.begin(&hi2c1, 0x31);
 	frameImu.begin(&hi2c1, 0x68);
-
-
-//	while(1)
-//	    {
-//	        uint16_t pos = 0;
-//	        i2cRxComplete = 0;
-//	        i2cError = 0;
-//
-//	        printf("INIT START...\r\n");
-//
-//	        // === Проверка состояния перед стартом ===
-//	        if (hi2c1.State != HAL_I2C_STATE_READY)
-//	        {
-//	            printf("State not READY, forcing recovery...\r\n");
-//	            HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-//	            HAL_Delay(5);
-//
-//	            __HAL_RCC_I2C1_FORCE_RESET();
-//	            __HAL_RCC_I2C1_RELEASE_RESET();
-//	            HAL_I2C_DeInit(&hi2c1);
-//	            MX_I2C1_Init();
-//	            hi2c1.State = HAL_I2C_STATE_READY;
-//	            HAL_Delay(10);
-//	        }
-//
-//	        HAL_StatusTypeDef status = HAL_I2C_Mem_Read_IT(&hi2c1,
-//	                                                       0x30 << 1,
-//	                                                       0x00,
-//	                                                       I2C_MEMADD_SIZE_8BIT,
-//	                                                       (uint8_t*)&pos,
-//	                                                       2);
-//
-//	        if (status != HAL_OK)
-//	        {
-//	            if (status == HAL_BUSY)
-//	            {
-//	                printf("BUSY detected on start, recovering...\r\n");
-//	                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-//	                HAL_Delay(5);
-//
-//	                __HAL_RCC_I2C1_FORCE_RESET();
-//	                __HAL_RCC_I2C1_RELEASE_RESET();
-//	                HAL_I2C_DeInit(&hi2c1);
-//	                MX_I2C1_Init();
-//	                hi2c1.State = HAL_I2C_STATE_READY;
-//	                i2cRxComplete = 0;
-//	                i2cError = 0;
-//	                HAL_Delay(15);
-//	            }
-//	            else
-//	            {
-//	                printf("I2C_IT start failed: %d\r\n", status);
-//	            }
-//	            HAL_Delay(50);
-//	            continue;
-//	        }
-//
-//	        // Ожидание с таймаутом
-//	        uint32_t timeout = HAL_GetTick() + 120;   // чуть увеличил
-//	        while (i2cRxComplete == 0 && i2cError == 0)
-//	        {
-//	            if (HAL_GetTick() > timeout)
-//	            {
-//	                printf("I2C Timeout! Doing full recovery...\r\n");
-//
-//	                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
-//	                HAL_Delay(5);
-//
-//	                __HAL_RCC_I2C1_FORCE_RESET();
-//	                __HAL_RCC_I2C1_RELEASE_RESET();
-//	                HAL_I2C_DeInit(&hi2c1);
-//	                MX_I2C1_Init();
-//	                hi2c1.State = HAL_I2C_STATE_READY;
-//
-//	                i2cRxComplete = 0;
-//	                i2cError = 0;
-//	                HAL_Delay(15);
-//	                break;
-//	            }
-//	        }
-//
-//	        if (i2cRxComplete)
-//	        {
-//	            printf("I2C Read OK, pos = 0x%04X\r\n", pos);
-//	            i2cRxComplete = 0;
-//	        }
-//	        else if (i2cError)
-//	        {
-//	            i2cError = 0;
-//	        }
-//
-//	        HAL_Delay(80);   // 80 мс между чтениями
-//	    }
-
-
-
 
 
 
@@ -389,9 +322,6 @@ void run_encoder_test()
 
 		uint32_t end;
 
-//		HAL_I2C_Mem_Read_DMA(&hi2c1,0x30 << 1,0x00,I2C_MEMADD_SIZE_8BIT,(uint8_t*)&pos,2);
-//		HAL_Delay(20);
-//		continue;
 
 
 		DWT->CYCCNT = 0;
@@ -453,6 +383,101 @@ void run_encoder_test()
 	}
 }
 
+#endif
+
+
+void run_encoder_test()
+{
+    pitch_encoder.begin(&hi2c1, 0x30);
+    yaw_encoder.begin(&hi2c1, 0x31);
+    frameImu.begin(&hi2c1, 0x68);
+
+    while(1)
+    {
+        uint16_t pos = 0;
+        i2cRxComplete = 0;
+        i2cError = 0;
+
+        // Защита от BUSY-состояния
+        if (hi2c1.State != HAL_I2C_STATE_READY)
+        {
+            printf("I2C not READY, forcing recovery...\r\n");
+            HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+            HAL_Delay(5);
+
+            __HAL_RCC_I2C1_FORCE_RESET();
+            __HAL_RCC_I2C1_RELEASE_RESET();
+            HAL_I2C_DeInit(&hi2c1);
+            MX_I2C1_Init();
+            hi2c1.State = HAL_I2C_STATE_READY;
+            HAL_Delay(10);
+        }
+
+        HAL_StatusTypeDef status = HAL_I2C_Mem_Read_IT(&hi2c1,
+                                                       0x30 << 1,
+                                                       0x00,
+                                                       I2C_MEMADD_SIZE_8BIT,
+                                                       (uint8_t*)&pos,
+                                                       2);
+
+
+
+        if (status != HAL_OK)
+        {
+            printf("I2C_IT start failed: %d\r\n", status);
+            if (status == HAL_BUSY)
+            {
+                // Дополнительный recovery при BUSY
+                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+                HAL_Delay(5);
+                __HAL_RCC_I2C1_FORCE_RESET();
+                __HAL_RCC_I2C1_RELEASE_RESET();
+                HAL_I2C_DeInit(&hi2c1);
+                MX_I2C1_Init();
+                hi2c1.State = HAL_I2C_STATE_READY;
+                HAL_Delay(15);
+            }
+            HAL_Delay(50);
+            continue;
+        }
+
+        // Ожидание с таймаутом
+        uint32_t timeout = HAL_GetTick() + 120;
+        while (i2cRxComplete == 0 && i2cError == 0)
+        {
+            if (HAL_GetTick() > timeout)
+            {
+                printf("I2C Timeout — recovery...\r\n");
+                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+                HAL_Delay(5);
+
+                __HAL_RCC_I2C1_FORCE_RESET();
+                __HAL_RCC_I2C1_RELEASE_RESET();
+                HAL_I2C_DeInit(&hi2c1);
+                MX_I2C1_Init();
+                hi2c1.State = HAL_I2C_STATE_READY;
+
+                i2cRxComplete = 0;
+                i2cError = 0;
+                HAL_Delay(15);
+                break;
+            }
+        }
+
+        if (i2cRxComplete)
+        {
+            printf("I2C Read OK, pos=0x%04X\r\n", pos);
+            i2cRxComplete = 0;
+        }
+        else if (i2cError)
+        {
+            i2cError = 0;
+        }
+
+        HAL_Delay(80);   // 80 мс между чтениями
+    }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -486,7 +511,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
-  //MX_DMA_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
@@ -497,7 +522,8 @@ int main(void)
   printf("Heloo\n");
 
 
-  I2C_ScanExternalBus(&hi2c1);
+  //I2C_ScanExternalBus(&hi2c1);
+
   while(1)
   {
 	  run_encoder_test();
