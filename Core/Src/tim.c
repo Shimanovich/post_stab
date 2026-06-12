@@ -140,6 +140,7 @@ void MX_TIM6_Init(void) // 1 мс
 {
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 71;                    // 72 МГц / 72 = 1 МГц тиков
+  //htim6.Init.Prescaler = 103;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim6.Init.Period = 999;                      // ARR = 1000 → ~1 мс (см. расчёт ниже)
   htim6.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -176,12 +177,19 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* tim_pwmHandle)
 
   /* USER CODE END TIM3_MspInit 1 */
   }
-  else if (tim_pwmHandle->Instance == TIM6)
-    {
-      __HAL_RCC_TIM6_CLK_ENABLE();
-      HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 5, 0);
-      HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
-    }
+
+
+}
+
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
+{
+  if (htim_base->Instance == TIM6)
+  {
+    __HAL_RCC_TIM6_CLK_ENABLE();
+
+    HAL_NVIC_SetPriority(TIM6_DAC_IRQn, 5, 0);   // приоритет подберите под свою задачу
+    HAL_NVIC_EnableIRQ(TIM6_DAC_IRQn);
+  }
 
 }
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef* timHandle)

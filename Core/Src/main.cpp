@@ -34,7 +34,7 @@
 #include "stdio.h"
 #include "AM4096.h"
 #include "icm20602.h"
-#include "sensorProc.h"
+#include "sensors.h"
 
 /* USER CODE END Includes */
 
@@ -82,7 +82,7 @@ AM4096 		pitch_encoder;
 AM4096 		yaw_encoder;
 ICM20602  	frameImu;
 
-sensor_Proc chain;
+sensors chainI2C = sensors(&hi2c1);
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,7 +100,7 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C1)
     {
-    	chain.singleEvent();
+    	chainI2C.singleEvent();
     }
 }
 
@@ -164,12 +164,15 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
+void step_motor();
 uint32_t timerCnt=0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == TIM6)
   {
 	  timerCnt++;
+	  chainI2C.Start();
+	  //step_motor();
   }
 }
 
@@ -178,6 +181,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 #endif
 
+
+void step_motor()
+{
+	float gxyz[3];
+	if (chainI2C.get_gyro(gxyz)>10)
+	{
+		motor1.move(gxyz[0]); // axis pitch
+	}
+}
 void runMotor(void)
 {
 	// === НАСТРОЙКИ ДЛЯ DC-2813C + 7 В ===
@@ -220,40 +232,47 @@ void runMotor(void)
 
 	    float speed = 0.0001;
 
-	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
 
 
-//	    while(1)
-//	    {
-//	    	printf("Test  \n\r");
-//	    	HAL_Delay(2000);
-//	    }
+		HAL_TIM_Base_Start_IT(&htim6);
 
-	    HAL_Delay(8000);
+	    //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
+
+
+	    //HAL_Delay(2000);
 
 
 	    uint32_t start_tick = HAL_GetTick();
 	    uint32_t circle_tick = HAL_GetTick();
 
 	    speed = 0.1;
-	    while((HAL_GetTick() - start_tick)<50000 )
-	    //while(1)
+
+	    int movcnt = 0;
+    	float gxyz[3];
+
+	    while((HAL_GetTick() - start_tick)<10000 )
 	    {
 
-	    	if ((HAL_GetTick()-circle_tick)>10000)
+
+	    	if (chainI2C.get_gyro(gxyz)>10)
 	    	{
-	    		speed = -speed;
-	    		circle_tick = HAL_GetTick();
+	    		printf(">gx:%f\n",gxyz[0]);
 	    	}
-//	    	speed += .001;
-	    	motor0.move(speed);
-	    	motor1.move(speed);
-	    	HAL_Delay(1);
+	    	else
+	    	{
+	    		printf("wait imu\n\r");
+
+	    	}
+
+	    	//HAL_Delay(1);
+
+	    	movcnt++;
 
 	    }
 
 	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
 
+	    HAL_TIM_Base_Stop(&htim6);
 
 	    while(1)
 	    {
@@ -394,83 +413,68 @@ void run_encoder_test()
 	DWT_Init();
 
 
-	uint16_t  raw_pitch_enc;
-	uint16_t  raw_yaw_enc;
-	uint8_t   raw_imu[14];
 
 
 
 
-//	chain.chain[0].bufAdr 	= &raw_imu[0];
-//	chain.chain[0].busAdr 	= 0x68;
-//	chain.chain[0].regArd 	= 0x3B;
-//	chain.chain[0].dataSize = 14;
-//	chain.chain[0].cnt++;
-
-	chain.chain[0].bufAdr 	= &raw_imu[0];
-	chain.chain[0].busAdr 	= 0x68;
-	chain.chain[0].regArd 	= 0x41;
-	chain.chain[0].dataSize = 6;
-	chain.chain[0].cnt++;
 
 
 
-	chain.chain[1].bufAdr 	= &raw_pitch_enc;
-	chain.chain[1].busAdr 	= 0x30;
-	chain.chain[1].regArd 	= 0x21;
-	chain.chain[1].dataSize = 2;
-	chain.chain[1].cnt++;
 
 
-	chain.chain[2].bufAdr 	= &raw_yaw_enc;
-	chain.chain[2].busAdr 	= 0x31;
-	chain.chain[2].regArd 	= 0x21;
-	chain.chain[2].dataSize = 2;
-	chain.chain[2].cnt++;
 
 
-	//chain.chain[0].next = &chain.chain[0];
-	chain.chain[0].next = &chain.chain[1];
-	chain.chain[1].next = &chain.chain[2];
-	chain.chain[2].next = &chain.chain[0];
-
-
-	chain.Start(&hi2c1);
-	HAL_TIM_Base_Start_IT(&htim6);
-
-	uint32_t prev[3];
-	uint32_t cur[3];
+	uint32_t prev[4];
+	uint32_t cur[4];
 
 	uint32_t tim_prev;
 	uint32_t tim_cur;
 
 
+
+	chainI2C.init_chain();
 	printf("Chain init\n\r");
-	//runMotor();
+	runMotor();
 
 
 
 	while(1)
 	{
-		cur[0] = chain.chain[0].cnt;
-		cur[1] = chain.chain[1].cnt;
-		cur[2] = chain.chain[2].cnt;
 
-		tim_cur = timerCnt;
+//		float imu[3];
+//
+//		if (chainI2C.get_gyro(imu))
+//		{
+//			printf(">gx:%f\n",imu[0]);
+//			printf(">gy:%f\n",imu[1]);
+//			printf(">gz:%f\n",imu[2]);
+//
+//			HAL_Delay(1);
+//		}
+
+//		printf(">gx:%d\n",chainI2C.raw_imu_gyro[0]);
+
+//		cur[0] = chain.chain[0].cnt;
+//		cur[1] = chain.chain[1].cnt;
+//		cur[2] = chain.chain[2].cnt;
+//		cur[3] = chain.chain[3].cnt;
+//
+//		tim_cur = timerCnt;
+//
+//
+//		printf("Cnt: 0: %d 1: %d 2: %d 3: %d   ---- ",cur[0],cur[1],cur[2],cur[3]);
+//
+//		printf("rate: 0: %d 1: %d 2: %d 3: %d  timcnt: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2],cur[3]-prev[3],tim_cur-tim_prev);
+//
+//		prev[0] = cur[0];
+//		prev[1] = cur[1];
+//		prev[2] = cur[2];
+//		prev[3] = cur[3];
+//
+//		tim_prev = tim_cur;
 
 
-		printf("Cnt: 0: %d 1: %d 2: %d    ---- ",cur[0],cur[1],cur[2]);
-
-		printf("rate: 0: %d 1: %d 2: %d timcnt: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2],tim_cur-tim_prev);
-
-		prev[0] = cur[0];
-		prev[1] = cur[1];
-		prev[2] = cur[2];
-
-		tim_prev = tim_cur;
-
-
-		HAL_Delay(1000);
+//		HAL_Delay(1000);
 	}
 
 //	while(1)
@@ -873,7 +877,7 @@ int main(void)
   /* USER CODE END Init */
 
   /* Configure the system clock */
- // SystemClock_Config_104MHz();
+  // SystemClock_Config_104MHz();
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
@@ -894,7 +898,6 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("Heloo\n");
 
 
   //I2C_ScanExternalBus(&hi2c1);

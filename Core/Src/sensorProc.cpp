@@ -8,19 +8,23 @@
 #include "sensorProc.h"
 
 
-sensor_Proc::sensor_Proc() {
+sensor_Proc::sensor_Proc(I2C_HandleTypeDef *hi2c) {
 	// TODO Auto-generated constructor stub
+	this->hi2c = hi2c;
 	this->active = &this->chain[0];
 	this->isActive = false;
 	this->isStoped = true;
 
 	for (int i=0;i<NUM_AREAS;i++ )
 	{
-		chain[i].regArd =0;
-		chain[i].bufAdr = nullptr;
-		chain[i].busAdr = 0;
-		chain[i].next   = nullptr;
-		chain[i].dataSize= 0;
+		chain[i].regArd 	=0;
+		chain[i].bufAdr 	= nullptr;
+		chain[i].busAdr 	= 0;
+		chain[i].next   	= nullptr;
+		chain[i].dataSize	= 0;
+		chain[i].tick 		= 0;
+		chain[i].period		= 0;
+
 	}
 
 }
@@ -29,38 +33,51 @@ sensor_Proc::~sensor_Proc() {
 	// TODO Auto-generated destructor stub
 }
 
-void sensor_Proc::Start(I2C_HandleTypeDef *hi2c)
+void sensor_Proc::Start()
 {
-	this->hi2c = hi2c;
-	if (active) {
+		this->active = &this->chain[0];
 		this->isActive = true;
 		this->isStoped = false;
-
 		this->singleEvent();
-	}
+
 }
 
 
 void sensor_Proc::singleEvent()
 {
-	if (!this->isActive)
+
+	if ((this->active!=nullptr)&&(this->isActive))
 	{
-		this->isStoped = true;
-	}
-	else
-	{
-		active->cnt++;
-		if ((active->bufAdr)&&(active->dataSize))
-		{
-			HAL_I2C_Mem_Read_DMA(this->hi2c, (active->busAdr << 1), active->regArd,I2C_MEMADD_SIZE_8BIT, (uint8_t*)active->bufAdr, active->dataSize);
-		}
-		if (active->next)
-		{
-					active = active->next;
+		active->tick++;
+
+		if (active->tick >= active->period) {
+			active->tick = 0;
+			active->cnt++;
+			if ((active->bufAdr) && (active->dataSize)) {
+				HAL_I2C_Mem_Read_DMA(this->hi2c, (active->busAdr << 1),
+						active->regArd, I2C_MEMADD_SIZE_8BIT,
+						(uint8_t*) active->bufAdr, active->dataSize);
+			}
+
+			active = active->next;
+
+			if (active == nullptr) {
+				this->isActive = false;
+			}
 		}
 		else
 		{
-			this->isActive  = false;
+			active = active->next;
+			if (active == nullptr) {
+			this->isActive = false;
+			}
+			this->singleEvent();
 		}
+
+	}
+	else
+	{
+		this->isStoped = true;
+
 	}
 }
