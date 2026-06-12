@@ -51,7 +51,7 @@ void BLDCDriver3PWM::setPwm(float Ua, float Ub, float Uc)
 //	  printf(">Ub:%f\n",Ub);
 //	  printf(">Uc:%f\n",Uc);
 
-		float ct = (float)_pwmPeriod / voltage_power_supply;
+		//float ct = (float)_pwmPeriod / voltage_power_supply;
 
 		uint32_t pwmA = (uint32_t)((Ua/voltage_power_supply + 0.5f) *(float)_pwmPeriod * 0.5f);
 		uint32_t pwmB = (uint32_t)((Ub/voltage_power_supply + 0.5f) *(float)_pwmPeriod * 0.5f);
@@ -62,9 +62,9 @@ void BLDCDriver3PWM::setPwm(float Ua, float Ub, float Uc)
 //        printf(">pwmC:%d\n",pwmC);
 //
 //
-//        __HAL_TIM_SET_COMPARE(_timA, _channelA, pwmA);
-//        __HAL_TIM_SET_COMPARE(_timB, _channelB, pwmB);
-//        __HAL_TIM_SET_COMPARE(_timC, _channelC, pwmC);
+        __HAL_TIM_SET_COMPARE(_timA, _channelA, pwmA);
+        __HAL_TIM_SET_COMPARE(_timB, _channelB, pwmB);
+        __HAL_TIM_SET_COMPARE(_timC, _channelC, pwmC);
 
 
 

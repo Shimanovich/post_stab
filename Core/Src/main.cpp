@@ -34,6 +34,7 @@
 #include "stdio.h"
 #include "AM4096.h"
 #include "icm20602.h"
+#include "sensorProc.h"
 
 /* USER CODE END Includes */
 
@@ -80,6 +81,8 @@ AM4096 		pitch_encoder;
 AM4096 		yaw_encoder;
 ICM20602  	frameImu;
 
+sensor_Proc chain;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -89,16 +92,14 @@ int _write(int file, char *ptr, int len)
     return len;
 }
 
-// === Флаги для IT-режима ===
-volatile uint8_t i2cRxComplete = 0;
-volatile uint8_t i2cError = 0;
+
 
 // === Callbacks ===
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C1)
     {
-        i2cRxComplete = 1;
+    	chain.singleEvent();
     }
 }
 
@@ -108,57 +109,57 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C1)
     {
-        i2cError = 1;
+      //  i2cError = 1;
         printf("I2C Error! Code=%lu State=%d\r\n", hi2c->ErrorCode, hi2c->State);
 
-        // Более агрессивный recovery при BERR и ARLO
-        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
-        HAL_Delay(5);
-
-        // Дополнительная Bus Recovery при BERR/ARLO
-        if (hi2c->ErrorCode == HAL_I2C_ERROR_BERR ||
-            hi2c->ErrorCode == HAL_I2C_ERROR_ARLO)
-        {
-            if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET)
-            {
-                printf("Bus Recovery triggered\r\n");
-                // 9 тактов SCL
-                GPIO_InitTypeDef GPIO_InitStruct = {0};
-                GPIO_InitStruct.Pin   = GPIO_PIN_15;
-                GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
-                GPIO_InitStruct.Pull  = GPIO_PULLUP;
-                HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-                for (int i = 0; i < 9; i++) {
-                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-                    HAL_Delay(1);
-                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
-                    HAL_Delay(1);
-                }
-                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-                HAL_Delay(5);
-
-                GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-                GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-                HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-            }
-        }
-
-        __HAL_RCC_I2C1_FORCE_RESET();
-        __HAL_RCC_I2C1_RELEASE_RESET();
-
-        HAL_I2C_DeInit(hi2c);
-        MX_I2C1_Init();
-
-        hi2c->State     = HAL_I2C_STATE_READY;
-        hi2c->Mode      = HAL_I2C_MODE_NONE;
-        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
-
-        i2cRxComplete = 0;
-        i2cError = 0;
-
-        printf("I2C Recovered (after BERR/ARLO)\r\n");
-        HAL_Delay(20);
+//        // Более агрессивный recovery при BERR и ARLO
+//        HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
+//        HAL_Delay(5);
+//
+//        // Дополнительная Bus Recovery при BERR/ARLO
+//        if (hi2c->ErrorCode == HAL_I2C_ERROR_BERR ||
+//            hi2c->ErrorCode == HAL_I2C_ERROR_ARLO)
+//        {
+//            if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET)
+//            {
+//                printf("Bus Recovery triggered\r\n");
+//                // 9 тактов SCL
+//                GPIO_InitTypeDef GPIO_InitStruct = {0};
+//                GPIO_InitStruct.Pin   = GPIO_PIN_15;
+//                GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
+//                GPIO_InitStruct.Pull  = GPIO_PULLUP;
+//                HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+//
+//                for (int i = 0; i < 9; i++) {
+//                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+//                    HAL_Delay(1);
+//                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+//                    HAL_Delay(1);
+//                }
+//                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+//                HAL_Delay(5);
+//
+//                GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+//                GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+//                HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+//            }
+//        }
+//
+//        __HAL_RCC_I2C1_FORCE_RESET();
+//        __HAL_RCC_I2C1_RELEASE_RESET();
+//
+//        HAL_I2C_DeInit(hi2c);
+//        MX_I2C1_Init();
+//
+//        hi2c->State     = HAL_I2C_STATE_READY;
+//        hi2c->Mode      = HAL_I2C_MODE_NONE;
+//        hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+//
+//        i2cRxComplete = 0;
+//        i2cError = 0;
+//
+//        printf("I2C Recovered (after BERR/ARLO)\r\n");
+//        HAL_Delay(20);
     }
 }
 
@@ -203,11 +204,11 @@ void runMotor(void)
 
 	    motor0.enable();
 	    motor1.enable();
-
+	    printf("Wait\n\r");
 	    HAL_Delay(8000);
+	    printf("start\n\r");
 
-
-	    float speed = 0.0000;
+	    float speed = 0.0001;
 
 	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
 
@@ -313,184 +314,228 @@ void DWT_Init(void)
 // 4  - таймаут на STOP
 // 5  - ошибка на шине (NACK / ARLO / BERR)
 // 6  - SDA прижат к земле (bus stuck)
-uint8_t I2C_MemRead_LowLevel(uint8_t slaveAddr, uint8_t regAddr, uint8_t *pData, uint16_t Size)
+
+
+//void I2C_Recover(I2C_HandleTypeDef *hi2c)
+//{
+//    // 1. Прерываем текущую операцию
+//    HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
+//    HAL_Delay(3);
+//
+//    // 2. Bus Recovery (если SDA прижат)
+//    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET)   // SDA = PA14
+//    {
+//        printf("SDA stuck → Bus Recovery\r\n");
+//
+//        // Переводим SCL в Output Open-Drain
+//        GPIO_InitTypeDef GPIO_InitStruct = {0};
+//        GPIO_InitStruct.Pin   = GPIO_PIN_15;           // SCL = PA15
+//        GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
+//        GPIO_InitStruct.Pull  = GPIO_PULLUP;
+//        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+//        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+//
+//        // 9 тактов SCL
+//        for (int i = 0; i < 9; i++)
+//        {
+//            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+//            HAL_Delay(1);
+//            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+//            HAL_Delay(1);
+//        }
+//        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+//        HAL_Delay(5);
+//
+//        // Возвращаем SCL в режим I2C
+//        GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+//        GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+//        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+//    }
+//
+//    // 3. Полный сброс периферии
+//    __HAL_RCC_I2C1_FORCE_RESET();
+//    __HAL_RCC_I2C1_RELEASE_RESET();
+//
+//    HAL_I2C_DeInit(hi2c);
+//    MX_I2C1_Init();
+//
+//    // 4. Принудительно сбрасываем состояние
+//    hi2c->State     = HAL_I2C_STATE_READY;
+//    hi2c->Mode      = HAL_I2C_MODE_NONE;
+//    hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+//
+//    // 5. Сбрасываем пользовательские флаги
+//    i2cRxComplete = 0;
+//    i2cError = 0;
+//
+//    printf("I2C Recovered\r\n");
+//    HAL_Delay(15);
+//}
+
+
+
+
+void run_encoder_test()
 {
-    if (Size == 0) return 99;
+	pitch_encoder.begin(&hi2c1, 0x30);
+	yaw_encoder.begin(&hi2c1, 0x31);
+	frameImu.begin(&hi2c1, 0x68);
 
-    uint32_t timeout;
+	DWT_Init();
 
-    // === Проверка, не залипла ли шина ===
-    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET)   // SDA = PA14
-    {
-        return 6;   // SDA stuck low
-    }
 
-    // === 1. START + Slave Address (Write) + Register Address ===
-    I2C1->CR2 = ((uint32_t)slaveAddr << 1)
-              | I2C_CR2_START
-              | (1 << 16);                    // NBYTES = 1
+	uint16_t  raw_pitch_enc;
+	uint16_t  raw_yaw_enc;
+	uint8_t   raw_imu[14];
 
-    // Ждём TXIS
-    timeout = 200000;
-    while (!(I2C1->ISR & I2C_ISR_TXIS) && --timeout);
-    if (timeout == 0) return 1;
 
-    I2C1->TXDR = regAddr;
 
-    // Ждём TC или TCR
-    timeout = 200000;
-    while (!(I2C1->ISR & (I2C_ISR_TC | I2C_ISR_TCR)) && --timeout);
-    if (timeout == 0) return 2;
 
-    // Проверяем ошибки
-    if (I2C1->ISR & (I2C_ISR_NACKF | I2C_ISR_ARLO | I2C_ISR_BERR))
-    {
-        I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_ARLOCF | I2C_ICR_BERRCF;
-        return 5;
-    }
+	chain.chain[0].bufAdr 	= &raw_imu[0];
+	chain.chain[0].busAdr 	= 0x68;
+	chain.chain[0].regArd 	= 0x3B;
+	chain.chain[0].dataSize = 14;
+	chain.chain[0].cnt++;
 
-    // === 2. Repeated START + Read ===
-    I2C1->CR2 = ((uint32_t)slaveAddr << 1)
-              | I2C_CR2_START
-              | I2C_CR2_RD_WRN
-              | ((uint32_t)Size << 16)
-              | I2C_CR2_AUTOEND;
+	chain.chain[1].bufAdr 	= &raw_pitch_enc;
+	chain.chain[1].busAdr 	= 0x30;
+	chain.chain[1].regArd 	= 0x21;
+	chain.chain[1].dataSize = 2;
+	chain.chain[1].cnt++;
 
-    for (uint16_t i = 0; i < Size; i++)
-    {
-        timeout = 200000;
-        while (!(I2C1->ISR & I2C_ISR_RXNE) && --timeout);
-        if (timeout == 0) return 3;
 
-        pData[i] = I2C1->RXDR;
-    }
+	chain.chain[2].bufAdr 	= &raw_yaw_enc;
+	chain.chain[2].busAdr 	= 0x31;
+	chain.chain[2].regArd 	= 0x21;
+	chain.chain[2].dataSize = 2;
+	chain.chain[2].cnt++;
 
-    // Ждём STOPF
-    timeout = 300000;
-    while (!(I2C1->ISR & I2C_ISR_STOPF) && --timeout);
-    I2C1->ICR = I2C_ICR_STOPCF;
 
-    if (I2C1->ISR & (I2C_ISR_NACKF | I2C_ISR_ARLO | I2C_ISR_BERR))
-    {
-        I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_ARLOCF | I2C_ICR_BERRCF;
-        return 5;
-    }
+	chain.chain[0].next = &chain.chain[0];
+	//chain.chain[0].next = &chain.chain[1];
+	chain.chain[1].next = &chain.chain[2];
+	chain.chain[2].next = &chain.chain[0];
 
-    return 0; // успех
-}
 
-void I2C_Recover(I2C_HandleTypeDef *hi2c)
-{
-    // 1. Прерываем текущую операцию
-    HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
-    HAL_Delay(3);
+	chain.Start(&hi2c1);
 
-    // 2. Bus Recovery (если SDA прижат)
-    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET)   // SDA = PA14
-    {
-        printf("SDA stuck → Bus Recovery\r\n");
 
-        // Переводим SCL в Output Open-Drain
-        GPIO_InitTypeDef GPIO_InitStruct = {0};
-        GPIO_InitStruct.Pin   = GPIO_PIN_15;           // SCL = PA15
-        GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
-        GPIO_InitStruct.Pull  = GPIO_PULLUP;
-        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+	uint32_t prev[3];
+	uint32_t cur[3];
 
-        // 9 тактов SCL
-        for (int i = 0; i < 9; i++)
-        {
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-            HAL_Delay(1);
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
-            HAL_Delay(1);
-        }
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-        HAL_Delay(5);
+	printf("Chain init\n\r");
+	//runMotor();
 
-        // Возвращаем SCL в режим I2C
-        GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-        GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-    }
+	while(1)
+	{
+		cur[0] = chain.chain[0].cnt;
+		cur[1] = chain.chain[1].cnt;
+		cur[2] = chain.chain[2].cnt;
 
-    // 3. Полный сброс периферии
-    __HAL_RCC_I2C1_FORCE_RESET();
-    __HAL_RCC_I2C1_RELEASE_RESET();
 
-    HAL_I2C_DeInit(hi2c);
-    MX_I2C1_Init();
 
-    // 4. Принудительно сбрасываем состояние
-    hi2c->State     = HAL_I2C_STATE_READY;
-    hi2c->Mode      = HAL_I2C_MODE_NONE;
-    hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
+		printf("Cnt: 0: %d 1: %d 2: %d    ---- ",cur[0],cur[1],cur[2]);
 
-    // 5. Сбрасываем пользовательские флаги
-    i2cRxComplete = 0;
-    i2cError = 0;
+		printf("rate: 0: %d 1: %d 2: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2]);
 
-    printf("I2C Recovered\r\n");
-    HAL_Delay(15);
-}
+		prev[0] = cur[0];
+		prev[1] = cur[1];
+		prev[2] = cur[2];
 
-uint8_t I2C_ReadRegister_IT(uint8_t slaveAddr, uint8_t regAddr, uint8_t *pData, uint16_t Size)
-{
-    i2cRxComplete = 0;
-    i2cError = 0;
 
-    // Проверка состояния перед стартом
-    if (hi2c1.State != HAL_I2C_STATE_READY)
-    {
-        printf("State not READY → Recovery\r\n");
-        I2C_Recover(&hi2c1);
-    }
-    if (hi2c1.State != HAL_I2C_STATE_READY || i2cError) {
-        I2C_Recover(&hi2c1);
-    }
-    HAL_StatusTypeDef status = HAL_I2C_Mem_Read_IT(&hi2c1,
-                                                   slaveAddr << 1,
-                                                   regAddr,
-                                                   I2C_MEMADD_SIZE_8BIT,
-                                                   pData,
-                                                   Size);
+		HAL_Delay(1000);
+	}
 
-    if (status != HAL_OK)
-    {
-        if (status == HAL_BUSY)
-        {
-            printf("BUSY on start → Recovery\r\n");
-            I2C_Recover(&hi2c1);
-        }
-        return 0; // не удалось запустить
-    }
-
-    // Ожидание с таймаутом
-    uint32_t timeout = HAL_GetTick() + 150;
-    while (i2cRxComplete == 0 && i2cError == 0)
-    {
-        if (HAL_GetTick() > timeout)
-        {
-            printf("I2C Timeout → Recovery\r\n");
-            I2C_Recover(&hi2c1);
-            return 0;
-        }
-    }
-
-    if (i2cRxComplete)
-    {
-        i2cRxComplete = 0;
-        return 1; // успех
-    }
-
-    if (i2cError)
-    {
-        i2cError = 0;
-        return 0; // была ошибка (recovery уже выполнен в колбэке)
-    }
-
-    return 0;
+//	while(1)
+//	{
+//		uint16_t pos;
+//		float angle;
+//		HAL_StatusTypeDef res;
+//
+//
+//		uint32_t end;
+//
+//
+//
+//		DWT->CYCCNT = 0;
+//		res= pitch_encoder.getAbsolutePosition(&pos);
+//		end = DWT->CYCCNT;
+//        if (res == HAL_OK)
+//        {
+//        	pitch_encoder.getAngleDegrees(&angle);
+//#if DIAG_PRINT
+//            printf(">pA:%f\n",angle);
+//            printf(">pP:%d\n",pos);
+//            printf(">dtp:%d\n",end / (SystemCoreClock / 1000000));
+//#endif
+//
+//		}
+//        else
+//        {
+//        	printf("Enc pitch err %d \n", res);
+//        }
+//
+//
+//
+//
+//		DWT->CYCCNT = 0;
+//		int r1= I2C_MemRead_LowLevel(0x30, 33, (uint8_t*)&pos, 2);
+//		end = DWT->CYCCNT;
+//        if (res == 0)
+//        {
+//        	pitch_encoder.getAngleDegrees(&angle);
+//#if DIAG_PRINT
+//            printf(">dA:%f\n",angle);
+//            printf(">dP:%d\n",pos);
+//            printf(">dtd:%d\n",end / (SystemCoreClock / 1000000));
+//#endif
+//
+//		}
+//        else
+//        {
+//        	printf("Enc pitch err %d \n", res);
+//        }
+//
+//
+//        DWT->CYCCNT = 0;
+//		res= yaw_encoder.getAbsolutePosition(&pos);
+//		end = DWT->CYCCNT;
+//        if (res == HAL_OK)
+//        {
+//        	yaw_encoder.getAngleDegrees(&angle);
+//#if DIAG_PRINT
+//            printf(">yA:%f\n",angle);
+//            printf(">yP:%d\n",pos);
+//            printf(">dty:%d\n",end / (SystemCoreClock / 1000000));
+//#endif
+//		}
+//        else
+//        {
+//          	printf("Enc yaw err %d \n", res);
+//        }
+//
+//        DWT->CYCCNT = 0;
+//        float gyro[3], accel[3], temp;
+//		int gres= frameImu.read(gyro, accel, &temp);
+//		end = DWT->CYCCNT;
+//        if (gres == ICM20602_OK)
+//        {
+//#if DIAG_PRINT
+//            printf(">g0:%f\n",gyro[0]);
+//            printf(">g1:%f\n",gyro[1]);
+//            printf(">g2:%f\n",gyro[2]);
+//            printf(">dtg:%d\n",end / (SystemCoreClock / 1000000));
+//#endif
+//		}
+//        else
+//        {
+//          	printf("Enc yaw err %d \n", res);
+//        }
+//
+//
+//
+//        HAL_Delay(1);
+//	}
 }
 
 
@@ -501,28 +546,7 @@ void run_encoder_test()
 	yaw_encoder.begin(&hi2c1, 0x31);
 	frameImu.begin(&hi2c1, 0x68);
 
-
-
 	DWT_Init();
-
-
-//	while(1)
-//	{
-//		uint8_t data[2];
-//		uint8_t result = I2C_MemRead_LowLevel(0x30, 33, data, 2);
-//
-//		if (result == 0)
-//		{
-//		    printf("Успех! Данные: 0x%02X 0x%02X\r\n", data[0], data[1]);
-//		}
-//		else
-//		{
-//		    printf("Ошибка I2C: код %d\r\n", result);
-//		}
-//
-//		HAL_Delay(1000);
-//	}
-
 	while(1)
 	{
 		uint16_t pos;
@@ -615,7 +639,7 @@ void run_encoder_test()
 	}
 }
 
-#endif
+
 
 
 void run_encoder_test()
@@ -709,6 +733,94 @@ void run_encoder_test()
         HAL_Delay(80);   // 80 мс между чтениями
     }
 }
+#endif
+
+//void run_encoder_test()
+//{
+//    pitch_encoder.begin(&hi2c1, 0x30);
+//    yaw_encoder.begin(&hi2c1, 0x31);
+//    frameImu.begin(&hi2c1, 0x68);
+//
+//    while(1)
+//    {
+//        uint16_t pos = 0;
+//        i2cRxComplete = 0;
+//        i2cError = 0;
+//
+//        // Защита от BUSY (оставляем без изменений)
+//        if (hi2c1.State != HAL_I2C_STATE_READY)
+//        {
+//            printf("I2C not READY, forcing recovery...\r\n");
+//            HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//            HAL_Delay(5);
+//            __HAL_RCC_I2C1_FORCE_RESET();
+//            __HAL_RCC_I2C1_RELEASE_RESET();
+//            HAL_I2C_DeInit(&hi2c1);
+//            MX_I2C1_Init();
+//            hi2c1.State = HAL_I2C_STATE_READY;
+//            HAL_Delay(10);
+//        }
+//
+//        // === ИЗМЕНЕНИЕ ЗДЕСЬ ===
+//        HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c1,
+//                                                        0x30 << 1,
+//                                                        33,
+//                                                        I2C_MEMADD_SIZE_8BIT,
+//                                                        (uint8_t*)&pos,
+//                                                        2);
+//
+//        if (status != HAL_OK)
+//        {
+//            printf("I2C_DMA start failed: %d\r\n", status);
+//            if (status == HAL_BUSY)
+//            {
+//                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//                HAL_Delay(5);
+//                __HAL_RCC_I2C1_FORCE_RESET();
+//                __HAL_RCC_I2C1_RELEASE_RESET();
+//                HAL_I2C_DeInit(&hi2c1);
+//                MX_I2C1_Init();
+//                hi2c1.State = HAL_I2C_STATE_READY;
+//                HAL_Delay(15);
+//            }
+//            HAL_Delay(50);
+//            continue;
+//        }
+//
+//        // Ожидание с таймаутом (логика остаётся той же)
+//        uint32_t timeout = HAL_GetTick() + 120;
+//        while (i2cRxComplete == 0 && i2cError == 0)
+//        {
+//            if (HAL_GetTick() > timeout)
+//            {
+//                printf("I2C Timeout — recovery...\r\n");
+//                HAL_I2C_Master_Abort_IT(&hi2c1, 0x30 << 1);
+//                HAL_Delay(5);
+//                __HAL_RCC_I2C1_FORCE_RESET();
+//                __HAL_RCC_I2C1_RELEASE_RESET();
+//                HAL_I2C_DeInit(&hi2c1);
+//                MX_I2C1_Init();
+//                hi2c1.State = HAL_I2C_STATE_READY;
+//                i2cRxComplete = 0;
+//                i2cError = 0;
+//                HAL_Delay(15);
+//                break;
+//            }
+//        }
+//
+//        if (i2cRxComplete)
+//        {
+//            printf("I2C Read OK (DMA), pos=0x%04X\r\n", pos);
+//            i2cRxComplete = 0;
+//        }
+//        else if (i2cError)
+//        {
+//            i2cError = 0;
+//        }
+//
+//        HAL_Delay(80);
+//    }
+//}
 
 /* USER CODE END 0 */
 
