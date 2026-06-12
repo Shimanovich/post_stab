@@ -119,14 +119,15 @@ int8_t ICM20602::begin(I2C_HandleTypeDef* hi2c, uint8_t addr) {
     ret = write_reg(ICM20602_ACCEL_CONFIG, ICM20602_ACCEL_FS_2G << 3);
     if (ret != 0) return ret;
 
-    // Конфигурация гироскопа: ±500 dps + DLPF 20 Гц
-    ret = write_reg(ICM20602_CONFIG, ICM20602_GYRO_DLPF_20HZ);
+    // Конфигурация гироскопа: 1KHZ
+    ret = write_reg(ICM20602_CONFIG, 0x01);
     if (ret != 0) return ret;
-    ret = write_reg(ICM20602_GYRO_CONFIG, ICM20602_GYRO_FS_500DPS << 3);
+
+    ret = write_reg(ICM20602_GYRO_CONFIG, (ICM20602_GYRO_FS_500DPS << 3) | 0x00);// FCHOICE_B = 00 (DLPF включён)
     if (ret != 0) return ret;
 
     // Делитель частоты выборки (~100 Гц)
-    ret = write_reg(ICM20602_SMPLRT_DIV, 0x09);
+    ret = write_reg(ICM20602_SMPLRT_DIV, 0x00);
     if (ret != 0) return ret;
 
     // Включение акселерометра и гироскопа
