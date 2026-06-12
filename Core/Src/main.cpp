@@ -164,6 +164,15 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
+uint32_t timerCnt=0;
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim->Instance == TIM6)
+  {
+	  timerCnt++;
+  }
+}
+
 
 #ifdef __cplusplus
 }
@@ -427,13 +436,19 @@ void run_encoder_test()
 
 
 	chain.Start(&hi2c1);
-
+	HAL_TIM_Base_Start_IT(&htim6);
 
 	uint32_t prev[3];
 	uint32_t cur[3];
 
+	uint32_t tim_prev;
+	uint32_t tim_cur;
+
+
 	printf("Chain init\n\r");
 	//runMotor();
+
+
 
 	while(1)
 	{
@@ -441,15 +456,18 @@ void run_encoder_test()
 		cur[1] = chain.chain[1].cnt;
 		cur[2] = chain.chain[2].cnt;
 
+		tim_cur = timerCnt;
 
 
 		printf("Cnt: 0: %d 1: %d 2: %d    ---- ",cur[0],cur[1],cur[2]);
 
-		printf("rate: 0: %d 1: %d 2: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2]);
+		printf("rate: 0: %d 1: %d 2: %d timcnt: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2],tim_cur-tim_prev);
 
 		prev[0] = cur[0];
 		prev[1] = cur[1];
 		prev[2] = cur[2];
+
+		tim_prev = tim_cur;
 
 
 		HAL_Delay(1000);
@@ -855,7 +873,8 @@ int main(void)
   /* USER CODE END Init */
 
   /* Configure the system clock */
-  SystemClock_Config_104MHz();
+ // SystemClock_Config_104MHz();
+  SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
 
@@ -866,8 +885,11 @@ int main(void)
   MX_ADC1_Init();
   MX_DMA_Init();
   MX_I2C1_Init();
+
   MX_TIM2_Init();
   MX_TIM3_Init();
+  MX_TIM6_Init();
+
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
