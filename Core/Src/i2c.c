@@ -41,10 +41,11 @@ void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing =   0x0010020A;
+  //hi2c1.Init.Timing =   0x0010020A;
+  hi2c1.Init.Timing =     0x00100206;   // imu 5 khz
 
 
-
+  //hi2c1.Init.Timing = 0x00300C28;
 
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -72,6 +73,7 @@ void MX_I2C1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
+  HAL_I2CEx_EnableFastModePlus(I2C_FASTMODEPLUS_I2C1);
 
   /* USER CODE END I2C1_Init 2 */
 

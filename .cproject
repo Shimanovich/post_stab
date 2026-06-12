@@ -220,7 +220,6 @@
 			<resource resourceType="PROJECT" workspacePath="/postsimple_stab"/>
 		</configuration>
 	</storageModule>
-	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 	<storageModule moduleId="scannerConfiguration">
 		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.1894509023;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.1894509023.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.1316499479;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1490928202">
@@ -235,5 +234,8 @@
 		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.2029624392;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.2029624392.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.1409973039;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.input.cpp.1349631180">
 			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 		</scannerConfigBuildInfo>
+	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets">
+		<buildTargets/>
 	</storageModule>
 </cproject>

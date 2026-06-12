@@ -61,6 +61,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void SystemClock_Config_104MHz(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -391,11 +392,19 @@ void run_encoder_test()
 
 
 
+//	chain.chain[0].bufAdr 	= &raw_imu[0];
+//	chain.chain[0].busAdr 	= 0x68;
+//	chain.chain[0].regArd 	= 0x3B;
+//	chain.chain[0].dataSize = 14;
+//	chain.chain[0].cnt++;
+
 	chain.chain[0].bufAdr 	= &raw_imu[0];
 	chain.chain[0].busAdr 	= 0x68;
-	chain.chain[0].regArd 	= 0x3B;
-	chain.chain[0].dataSize = 14;
+	chain.chain[0].regArd 	= 0x41;
+	chain.chain[0].dataSize = 6;
 	chain.chain[0].cnt++;
+
+
 
 	chain.chain[1].bufAdr 	= &raw_pitch_enc;
 	chain.chain[1].busAdr 	= 0x30;
@@ -411,8 +420,8 @@ void run_encoder_test()
 	chain.chain[2].cnt++;
 
 
-	chain.chain[0].next = &chain.chain[0];
-	//chain.chain[0].next = &chain.chain[1];
+	//chain.chain[0].next = &chain.chain[0];
+	chain.chain[0].next = &chain.chain[1];
 	chain.chain[1].next = &chain.chain[2];
 	chain.chain[2].next = &chain.chain[0];
 
@@ -846,7 +855,7 @@ int main(void)
   /* USER CODE END Init */
 
   /* Configure the system clock */
-  SystemClock_Config();
+  SystemClock_Config_104MHz();
 
   /* USER CODE BEGIN SysInit */
 
@@ -886,6 +895,59 @@ int main(void)
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
+}
+
+/**
+ * @brief  Разгон до 104 МГц (overclock)
+ * @note   8 МГц HSE × 13 = 104 МГц
+ *         ВНИМАНИЕ: Это неофициально! Тестируйте тщательно.
+ */
+void SystemClock_Config_104MHz(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+
+  /** Инициализация генераторов */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL13;   // ← главное изменение (8 × 13 = 104 МГц)
+
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Настройка шин CPU / AHB / APB */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                              | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;     // HCLK = 104 МГц
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;      // PCLK1 = 52 МГц  (официально max 36 МГц!)
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;      // PCLK2 = 104 МГц (официально max 72 МГц!)
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Периферийные часы (оставлено как было) */
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_USART2
+                                     | RCC_PERIPHCLK_I2C1   | RCC_PERIPHCLK_ADC12;
+  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
+  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  PeriphClkInit.Adc12ClockSelection  = RCC_ADC12PLLCLK_DIV1;
+  PeriphClkInit.I2c1ClockSelection   = RCC_I2C1CLKSOURCE_HSI;   // Хорошо — независимо от PLL
+
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /**
