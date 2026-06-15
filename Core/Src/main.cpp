@@ -82,6 +82,8 @@ AM4096 		pitch_encoder;
 AM4096 		yaw_encoder;
 ICM20602  	frameImu;
 
+LowPassFilter gyro_filter(0.02f);
+
 sensors chainI2C = sensors(&hi2c1);
 
 #ifdef __cplusplus
@@ -164,7 +166,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
-void step_motor();
+
 uint32_t timerCnt=0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -172,7 +174,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   {
 	  timerCnt++;
 	  chainI2C.Start();
-	  //step_motor();
+	  step_motor();
   }
 }
 
@@ -187,10 +189,10 @@ void step_motor()
 	float gxyz[3];
 	if (chainI2C.get_gyro(gxyz)>10)
 	{
-		motor1.move(gxyz[0]); // axis pitch
+		motor1.move(gyro_filter(gxyz[0])); // axis pitch
 	}
 }
-void runMotor(void)
+void initMotor(void)
 {
 	// === НАСТРОЙКИ ДЛЯ DC-2813C + 7 В ===
 
@@ -234,52 +236,53 @@ void runMotor(void)
 
 
 
-		HAL_TIM_Base_Start_IT(&htim6);
+
 
 	    //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
-
-
-	    //HAL_Delay(2000);
-
-
-	    uint32_t start_tick = HAL_GetTick();
-	    uint32_t circle_tick = HAL_GetTick();
-
-	    speed = 0.1;
-
-	    int movcnt = 0;
-    	float gxyz[3];
-
-	    while((HAL_GetTick() - start_tick)<10000 )
-	    {
-
-
-	    	if (chainI2C.get_gyro(gxyz)>10)
-	    	{
-	    		printf(">gx:%f\n",gxyz[0]);
-	    	}
-	    	else
-	    	{
-	    		printf("wait imu\n\r");
-
-	    	}
-
-	    	//HAL_Delay(1);
-
-	    	movcnt++;
-
-	    }
-
-	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
-
-	    HAL_TIM_Base_Stop(&htim6);
-
-	    while(1)
-	    {
-
-	    }
-
 }
+
+//	    //HAL_Delay(2000);
+//
+//
+//	    uint32_t start_tick = HAL_GetTick();
+//	    uint32_t circle_tick = HAL_GetTick();
+//
+//	    speed = 0.1;
+//
+//	    int movcnt = 0;
+//    	float gxyz[3];
+//
+//	    while((HAL_GetTick() - start_tick)<10000 )
+//	    {
+//
+//
+//	    	if (chainI2C.get_gyro(gxyz)>10)
+//	    	{
+//	    		printf(">gx:%f\n",gxyz[0]);
+//	    		printf(">fx:%f\n",gyro_filter(gxyz[0]));
+//	    	}
+//	    	else
+//	    	{
+//	    		printf("wait imu\n\r");
+//
+//	    	}
+//
+//	    	//HAL_Delay(1);
+//
+//	    	movcnt++;
+//
+//	    }
+//
+//	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
+//
+//	    HAL_TIM_Base_Stop(&htim6);
+//
+//	    while(1)
+//	    {
+//
+//	    }
+//
+//}
 
 void I2C_ScanExternalBus(I2C_HandleTypeDef *hi2c)
 {
@@ -415,17 +418,8 @@ void run_encoder_test()
 
 
 
-
-
-
-
-
-
-
-
-
-	uint32_t prev[4];
-	uint32_t cur[4];
+	uint32_t prev[5];
+	uint32_t cur[5];
 
 	uint32_t tim_prev;
 	uint32_t tim_cur;
@@ -434,15 +428,15 @@ void run_encoder_test()
 
 	chainI2C.init_chain();
 	printf("Chain init\n\r");
-	runMotor();
+	initMotor();
 
-
+	HAL_TIM_Base_Start_IT(&htim6);
 
 	while(1)
 	{
 
-//		float imu[3];
-//
+		float imu[3];
+
 //		if (chainI2C.get_gyro(imu))
 //		{
 //			printf(">gx:%f\n",imu[0]);
@@ -454,27 +448,31 @@ void run_encoder_test()
 
 //		printf(">gx:%d\n",chainI2C.raw_imu_gyro[0]);
 
-//		cur[0] = chain.chain[0].cnt;
-//		cur[1] = chain.chain[1].cnt;
-//		cur[2] = chain.chain[2].cnt;
-//		cur[3] = chain.chain[3].cnt;
-//
-//		tim_cur = timerCnt;
-//
-//
-//		printf("Cnt: 0: %d 1: %d 2: %d 3: %d   ---- ",cur[0],cur[1],cur[2],cur[3]);
-//
-//		printf("rate: 0: %d 1: %d 2: %d 3: %d  timcnt: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2],cur[3]-prev[3],tim_cur-tim_prev);
-//
-//		prev[0] = cur[0];
-//		prev[1] = cur[1];
-//		prev[2] = cur[2];
-//		prev[3] = cur[3];
-//
-//		tim_prev = tim_cur;
+
+		cur[0] = chainI2C.chain[0].cnt;
+		cur[1] = chainI2C.chain[1].cnt;
+		cur[2] = chainI2C.chain[2].cnt;
+		cur[3] = chainI2C.chain[3].cnt;
+		cur[4] = chainI2C.chain[4].cnt;
 
 
-//		HAL_Delay(1000);
+		tim_cur = timerCnt;
+
+
+		printf("Cnt: 0: %d 1: %d 2: %d 3: %d 4: %d   ---- ",cur[0],cur[1],cur[2],cur[3],cur[4]);
+
+		printf("rate: 0: %d 1: %d 2: %d 3: %d 4: %d  timcnt: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2],cur[3]-prev[3],cur[4]-prev[4],tim_cur-tim_prev);
+
+		prev[0] = cur[0];
+		prev[1] = cur[1];
+		prev[2] = cur[2];
+		prev[3] = cur[3];
+		prev[4] = cur[4];
+
+		tim_prev = tim_cur;
+
+
+		HAL_Delay(1000);
 	}
 
 //	while(1)

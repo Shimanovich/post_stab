@@ -11,7 +11,7 @@
 
 
 
-#define NUM_AREAS 4
+#define NUM_AREAS 5
 
 class sensor_Proc {
 
@@ -20,12 +20,14 @@ public:
 	{
 		uint8_t 		busAdr;
 		uint8_t 		regArd;
-		void * 		bufAdr;
+		void * 			bufAdr;
 		uint8_t     	dataSize;
 		i2cChain_t * 	next;
 		uint32_t        cnt;
 		uint32_t        period;
 		uint32_t        tick;
+		bool 			isExecute;
+		void  			(*funcptr)(void);
 
 	}i2cChain_t;
 

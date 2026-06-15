@@ -105,15 +105,24 @@ void sensors::init_chain()
 	this->chain[3].regArd 	= 0x41;
 	this->chain[3].dataSize = 2;
 	this->chain[3].period   = 5000; // 0.5
-	this->chain[3].cnt++;
+	this->chain[3].cnt		= 0;
 
+	this->chain[4].bufAdr 	= 0;
+	this->chain[4].busAdr 	= 0;
+	this->chain[4].regArd 	= 0;
+	this->chain[4].dataSize = 0;
+	this->chain[4].period   = 1; // 0.5
+	this->chain[4].isExecute = true;
+	this->chain[4].cnt		= 0;
 
-	//chain.chain[0].next = &chain.chain[0];
+	extern void step_motor();
+	this->chain[4].funcptr = step_motor;
 
 	this->chain[0].next = &this->chain[1];
 	this->chain[1].next = &this->chain[2];
 	this->chain[2].next = &this->chain[3];
-	this->chain[3].next = nullptr;
+	this->chain[3].next = &this->chain[4];
+	this->chain[4].next = nullptr;
 }
 
 

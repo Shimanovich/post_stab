@@ -24,6 +24,7 @@ sensor_Proc::sensor_Proc(I2C_HandleTypeDef *hi2c) {
 		chain[i].dataSize	= 0;
 		chain[i].tick 		= 0;
 		chain[i].period		= 0;
+		chain[i].isExecute  = false;
 
 	}
 
@@ -53,6 +54,12 @@ void sensor_Proc::singleEvent()
 		if (active->tick >= active->period) {
 			active->tick = 0;
 			active->cnt++;
+
+			if (active->isExecute)
+			{
+				active->funcptr();
+			}
+			else
 			if ((active->bufAdr) && (active->dataSize)) {
 				HAL_I2C_Mem_Read_DMA(this->hi2c, (active->busAdr << 1),
 						active->regArd, I2C_MEMADD_SIZE_8BIT,
