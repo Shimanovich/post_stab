@@ -174,7 +174,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   {
 	  timerCnt++;
 	  chainI2C.Start();
-	  step_motor();
   }
 }
 
