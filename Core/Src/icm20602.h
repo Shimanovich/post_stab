@@ -126,7 +126,7 @@ int8_t ICM20602::begin(I2C_HandleTypeDef* hi2c, uint8_t addr) {
     ret = write_reg(ICM20602_GYRO_CONFIG, (ICM20602_GYRO_FS_500DPS << 3) | 0x00);// FCHOICE_B = 00 (DLPF включён)
     if (ret != 0) return ret;
 
-    // Делитель частоты выборки (~100 Гц)
+    // Делитель частоты выборки (~1000 Гц)
     ret = write_reg(ICM20602_SMPLRT_DIV, 0x00);
     if (ret != 0) return ret;
 

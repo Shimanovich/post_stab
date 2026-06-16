@@ -43,7 +43,7 @@ void MX_I2C1_Init(void)
   hi2c1.Instance = I2C1;
   //hi2c1.Init.Timing =   0x0010020A;
   //hi2c1.Init.Timing =     0x00100206;   // imu 5 khz
-  hi2c1.Init.Timing =   0x0010030A;
+  hi2c1.Init.Timing =   0x0010020A;
 
 
   //hi2c1.Init.Timing = 0x00300C28;

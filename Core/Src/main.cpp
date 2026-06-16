@@ -87,7 +87,6 @@ emulator    yawEmulator;
 
 ICM20602  	frameImu;
 
-LowPassFilter gyro_filter(0.02f);
 
 sensors chainI2C = sensors(&hi2c1);
 
@@ -188,16 +187,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #endif
 
 
-void step_motor()
-{
-	float gxyz[3];
-	if (chainI2C.get_gyro(gxyz)>10)
-	{
-		//motor1.loopFOC();
-		//motor1.move(-gyro_filter(gxyz[0])); // axis pitch
-		motor1.move(-gxyz[0]); // axis pitch
-	}
+void step_motor() {
+    float gxyz[3];
+    if (chainI2C.get_gyro(gxyz) > 10) {
+    	motor1.loopFOC();
+    	float Kp_rate = 1.0f;   // тюнить
+    	float target_vel = - Kp_rate * gxyz[0];
+    	motor1.move(target_vel);
+    }
 }
+
+
 void initMotor(void)
 {
 	// === НАСТРОЙКИ ДЛЯ DC-2813C + 7 В ===
@@ -219,7 +219,13 @@ void initMotor(void)
 	    motor1.pole_pairs = 7;
 	    motor1.voltage_limit = vl;
 	    motor1.velocity_limit = 30.0f;
-	    motor1.controller = ControlType::velocity_openloop;
+	    motor1.controller = ControlType::velocity;
+
+	    // === Настройка PID скорости (ОБЯЗАТЕЛЬНО тюнить!) ===
+	    motor1.PID_velocity.P = 1.0;     // Пропорционал — начинайте с 0.05–0.2
+	    motor1.PID_velocity.I = 0.0;      // Интеграл — пока 0, добавляйте позже
+	    motor1.PID_velocity.D = 0.02;     // Дифференциал — помогает гасить колебания
+	    motor1.LPF_velocity.Tf = 0.02;   // Фильтр скорости (секунды)
 
 
 	    driverMot0.init();
