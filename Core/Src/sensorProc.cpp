@@ -17,7 +17,7 @@ sensor_Proc::sensor_Proc(I2C_HandleTypeDef *hi2c) {
 
 	for (int i=0;i<NUM_AREAS;i++ )
 	{
-		chain[i].regArd 	=0;
+		chain[i].regAdr 	=0;
 		chain[i].bufAdr 	= nullptr;
 		chain[i].busAdr 	= 0;
 		chain[i].next   	= nullptr;
@@ -62,7 +62,7 @@ void sensor_Proc::singleEvent()
 			else
 			if ((active->bufAdr) && (active->dataSize)) {
 				HAL_I2C_Mem_Read_DMA(this->hi2c, (active->busAdr << 1),
-						active->regArd, I2C_MEMADD_SIZE_8BIT,
+						active->regAdr, I2C_MEMADD_SIZE_8BIT,
 						(uint8_t*) active->bufAdr, active->dataSize);
 			}
 

@@ -150,3 +150,4 @@ private:
     bool               _isInitialized = false;
     static constexpr uint32_t TIMEOUT_MS = 100;
 };
+

@@ -19,7 +19,7 @@ public:
 	typedef struct i2cChain_t
 	{
 		uint8_t 		busAdr;
-		uint8_t 		regArd;
+		uint8_t 		regAdr;
 		void * 			bufAdr;
 		uint8_t     	dataSize;
 		i2cChain_t * 	next;

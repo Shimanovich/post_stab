@@ -35,6 +35,7 @@
 #include "AM4096.h"
 #include "icm20602.h"
 #include "sensors.h"
+#include "encoderEmulator.h"
 
 /* USER CODE END Includes */
 
@@ -80,6 +81,10 @@ BLDCMotor motor1 = BLDCMotor(7);
 
 AM4096 		pitch_encoder;
 AM4096 		yaw_encoder;
+
+emulator    pitchEmulator;
+emulator    yawEmulator;
+
 ICM20602  	frameImu;
 
 LowPassFilter gyro_filter(0.02f);
@@ -188,7 +193,9 @@ void step_motor()
 	float gxyz[3];
 	if (chainI2C.get_gyro(gxyz)>10)
 	{
-		motor1.move(gyro_filter(gxyz[0])); // axis pitch
+		//motor1.loopFOC();
+		//motor1.move(-gyro_filter(gxyz[0])); // axis pitch
+		motor1.move(-gxyz[0]); // axis pitch
 	}
 }
 void initMotor(void)
@@ -205,7 +212,7 @@ void initMotor(void)
 	    motor0.pole_pairs = 7;
 	    motor0.voltage_limit = vl;
 	    motor0.velocity_limit = 30.1f;
-	    motor0.controller = ControlType::velocity_openloop;
+	    motor0.controller = ControlType::velocity;
 
 	    driverMot1.voltage_power_supply = vm;
 	    driverMot1.voltage_limit = vl;
@@ -218,26 +225,24 @@ void initMotor(void)
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
 	    motor0.init();
-	    motor0.sensor = nullptr;
+	    motor0.sensor = &yawEmulator;
 
 	    driverMot1.init();
 	    motor1.linkDriver(&driverMot1);
 	    motor1.init();
-	    motor1.sensor = nullptr;
+	    motor1.sensor = &pitchEmulator;
+
+
 
 	    motor0.enable();
 	    motor1.enable();
 	    printf("Wait\n\r");
-	    HAL_Delay(8000);
 	    printf("start\n\r");
 
-	    float speed = 0.0001;
 
 
 
 
-
-	    //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
 }
 
 //	    //HAL_Delay(2000);
@@ -408,9 +413,19 @@ void DWT_Init(void)
 
 void run_encoder_test()
 {
+
+
 	pitch_encoder.begin(&hi2c1, 0x30);
 	yaw_encoder.begin(&hi2c1, 0x31);
 	frameImu.begin(&hi2c1, 0x68);
+
+
+//	pitchEmulator.begin(chainI2C.raw_pitch_enc);
+//	yawEmulator.begin(chainI2C.raw_yaw_enc);
+
+	pitchEmulator.begin(chainI2C.raw_pitch_enc, chainI2C.raw_imu_gyro);
+	  yawEmulator.begin(chainI2C.raw_yaw_enc,   chainI2C.raw_imu_gyro);
+
 
 	DWT_Init();
 
@@ -430,6 +445,38 @@ void run_encoder_test()
 	initMotor();
 
 	HAL_TIM_Base_Start_IT(&htim6);
+
+
+	//while(1)
+	//{
+
+		//start _motor
+	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
+
+	    HAL_Delay(10000);
+	    //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
+	//}
+
+
+	    float gxyz[3];
+
+
+	while(1)
+	{
+			{
+
+
+					printf(">px:%f\n",pitchEmulator.getAngle());
+					printf(">vx:%f\n",motor1.shaft_velocity);
+
+					chainI2C.get_gyro(gxyz);
+
+					printf(">gx:%f\n",gxyz[0]);
+
+					HAL_Delay(1);
+				}
+	}
+
 
 	while(1)
 	{
