@@ -7,10 +7,13 @@
 
 class sensors : public sensor_Proc{
 
+
+
 private:
 
 
 	void  copysave(void * dst, const void *src, size_t sz);
+	void  get_gyro(float * gdata, uint8_t * in_ptr);
 
 
 public:
@@ -18,7 +21,8 @@ public:
 
 	uint8_t   raw_pitch_enc[4];
 	uint8_t   raw_yaw_enc[4];
-	uint8_t   raw_imu_gyro[6];
+	uint8_t   raw_imu_gyro_gimb[2];
+	uint8_t   raw_imu_gyro_static[2];
 	uint8_t   raw_temp[2];
 
 public:
@@ -33,7 +37,8 @@ public:
 	uint32_t get_yaw	(float * yaw);
 
 
-	uint32_t get_gyro	(float * gdata);
+	uint32_t get_gyro_gimb	(float * gdata);
+	uint32_t get_gyro_static(float * gdata);
 
 
 

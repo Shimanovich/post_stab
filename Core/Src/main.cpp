@@ -36,6 +36,8 @@
 #include "icm20602.h"
 #include "sensors.h"
 #include "encoderEmulator.h"
+#include "Commander.h"
+#include "bytefifo.h"
 
 /* USER CODE END Includes */
 
@@ -86,9 +88,72 @@ emulator    pitchEmulator;
 emulator    yawEmulator;
 
 ICM20602  	frameImu;
+ICM20602  	baseImu;
+
+ByteFifo fifo(32);
+
+LowPassFilter LPF_velocity(0.05);
+
+float az_spped = 0;
+
+float el_spped = 0;
+
+
+void azSpeed_Set(char * cmd)
+{
+	float val = atof(cmd);
+
+
+	az_spped = val;
+}
+
+void elSpeed_Set(char * cmd)
+{
+	float val = atof(cmd);
+	el_spped = val;
+}
 
 
 sensors chainI2C = sensors(&hi2c1);
+
+uint8_t rx_byte;
+float gyro_Shift=0.0f;
+
+void SetP(char* cmd) {
+	float val = atof(cmd);
+	motor1.PID_velocity.P = val;
+
+ }
+
+void SetI(char* cmd) {
+	float val = atof(cmd);
+	motor1.PID_velocity.I = val;
+
+ }
+
+void SetD(char* cmd) {
+	float val = atof(cmd);
+	motor1.PID_velocity.D = val;
+
+ }
+
+void SetTf(char* cmd) {
+	float val = atof(cmd);
+
+	LPF_velocity.Tf = val;
+	//motor1.LPF_velocity.Tf = val;
+ }
+
+
+void SetRamp(char* cmd) {
+	float val = atof(cmd);
+	printf("x\n");
+	gyro_Shift = val;
+ }
+
+
+
+Commander commander(&huart1, '\n', false);
 
 #ifdef __cplusplus
 extern "C" {
@@ -107,6 +172,14 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
     if (hi2c->Instance == I2C1)
     {
     	chainI2C.singleEvent();
+    }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+        //commander.processIncomingChar(rx_byte);   // или кладите в ring buffer
+    	fifo.push(rx_byte);
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
     }
 }
 
@@ -189,14 +262,29 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void step_motor() {
     float gxyz[3];
-    if (chainI2C.get_gyro(gxyz) > 10) {
-    	motor1.loopFOC();
-    	float Kp_rate = 1.0f;   // тюнить
-    	float target_vel = - Kp_rate * gxyz[0];
-    	motor1.move(target_vel);
+    if (chainI2C.get_gyro_gimb(gxyz) > 10) {
+
+    	float target_vel = - (gxyz[0]-gyro_Shift);
+
+    	//motor1.move(LPF_velocity(target_vel) + el_spped);
+    	motor1.move(el_spped);
     }
+    if (chainI2C.get_gyro_static(gxyz) > 10) {
+
+
+      	float target_vel = - (gxyz[1]-gyro_Shift);
+      	//motor0.move(target_vel + az_spped);
+      	motor0.move( az_spped);
+        }
+
 }
 
+
+
+/*************************************
+ *
+ *
+ */
 
 void initMotor(void)
 {
@@ -204,7 +292,7 @@ void initMotor(void)
 
 
 		float vm = 14.0f;
-		float vl = 6.0f;
+		float vl = 7.0f;
 
 
 	    driverMot0.voltage_power_supply = vm;
@@ -212,20 +300,20 @@ void initMotor(void)
 	    motor0.pole_pairs = 7;
 	    motor0.voltage_limit = vl;
 	    motor0.velocity_limit = 30.1f;
-	    motor0.controller = ControlType::velocity;
+	    motor0.controller = ControlType::velocity_openloop;
 
 	    driverMot1.voltage_power_supply = vm;
 	    driverMot1.voltage_limit = vl;
 	    motor1.pole_pairs = 7;
 	    motor1.voltage_limit = vl;
 	    motor1.velocity_limit = 30.0f;
-	    motor1.controller = ControlType::velocity;
+	    motor1.controller = ControlType::velocity_openloop;
 
-	    // === Настройка PID скорости (ОБЯЗАТЕЛЬНО тюнить!) ===
-	    motor1.PID_velocity.P = 1.0;     // Пропорционал — начинайте с 0.05–0.2
-	    motor1.PID_velocity.I = 0.0;      // Интеграл — пока 0, добавляйте позже
-	    motor1.PID_velocity.D = 0.02;     // Дифференциал — помогает гасить колебания
-	    motor1.LPF_velocity.Tf = 0.02;   // Фильтр скорости (секунды)
+//	    // === Настройка PID скорости (ОБЯЗАТЕЛЬНО тюнить!) ===
+//	    motor1.PID_velocity.P = 1.0;     // Пропорционал — начинайте с 0.05–0.2
+//	    motor1.PID_velocity.I = 0.0;      // Интеграл — пока 0, добавляйте позже
+//	    motor1.PID_velocity.D = 0.02;     // Дифференциал — помогает гасить колебания
+//	    motor1.LPF_velocity.Tf = 0.02;   // Фильтр скорости (секунды)
 
 
 	    driverMot0.init();
@@ -420,22 +508,25 @@ void DWT_Init(void)
 void run_encoder_test()
 {
 
+	Switch_I2C1_to_Main();
+	baseImu.begin(&hi2c1, 0x68);
 
+	Switch_I2C1_to_Alt();
 	pitch_encoder.begin(&hi2c1, 0x30);
 	yaw_encoder.begin(&hi2c1, 0x31);
 	frameImu.begin(&hi2c1, 0x68);
 
 
+
+
 //	pitchEmulator.begin(chainI2C.raw_pitch_enc);
 //	yawEmulator.begin(chainI2C.raw_yaw_enc);
 
-	pitchEmulator.begin(chainI2C.raw_pitch_enc, chainI2C.raw_imu_gyro);
-	  yawEmulator.begin(chainI2C.raw_yaw_enc,   chainI2C.raw_imu_gyro);
+	pitchEmulator.begin(chainI2C.raw_pitch_enc, chainI2C.raw_imu_gyro_gimb);
+	  yawEmulator.begin(chainI2C.raw_yaw_enc,   chainI2C.raw_imu_gyro_gimb);
 
 
 	DWT_Init();
-
-
 
 
 	uint32_t prev[5];
@@ -450,6 +541,19 @@ void run_encoder_test()
 	printf("Chain init\n\r");
 	initMotor();
 
+	commander.add('P', SetP, "P_coef");
+	commander.add('D', SetD, "d_coef");
+	commander.add('I', SetI, "i_coef");
+
+	commander.add('T', SetTf, "Timefilter");
+	commander.add('R', SetRamp, "Ramp");
+
+	commander.add('A', azSpeed_Set, "AZ SPEED");
+	commander.add('E', elSpeed_Set, "AZ SPEED");
+
+
+	HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+
 	HAL_TIM_Base_Start_IT(&htim6);
 
 
@@ -457,29 +561,48 @@ void run_encoder_test()
 	//{
 
 		//start _motor
-	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
+	  //  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
 
-	    HAL_Delay(10000);
-	    //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
+
+	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
 	//}
 
 
-	    float gxyz[3];
+	    float w;
 
 
+
+	    uint8_t b;
 	while(1)
 	{
 			{
 
 
 					printf(">px:%f\n",pitchEmulator.getAngle());
-					printf(">vx:%f\n",motor1.shaft_velocity);
+					printf(">vx:%f\n",motor1.shaft_velocity_sp);
 
-					chainI2C.get_gyro(gxyz);
+					chainI2C.get_gyro_gimb(&w);
+					printf(">gx:%f\n",w);
 
-					printf(">gx:%f\n",gxyz[0]);
+					chainI2C.get_gyro_static(&w);
+					printf(">s0:%f\n",w);
+//					printf(">s1:%f\n",gxyz[1]);
+//					printf(">s2:%f\n",gxyz[2]);
 
-					HAL_Delay(1);
+//					printf(">Av:%f\n",az_spped);
+//					printf(">Pv:%f\n",el_spped);
+
+					printf(">ov:%d\n",chainI2C.overload);
+
+
+
+					if (fifo.pop(b))
+					{
+						commander.processIncomingChar(b);
+					}
+//					HAL_UART_Receive(&huart1, &rx_byte, 1,1);
+//					commander.processIncomingChar(rx_byte);
+					//HAL_Delay(1);
 				}
 	}
 

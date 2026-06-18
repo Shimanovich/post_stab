@@ -11,11 +11,14 @@
 
 
 
-#define NUM_AREAS 5
+#define NUM_AREAS 7
 
 class sensor_Proc {
 
 public:
+
+	enum  busMode_t{MAIN_I2C,ALT_I2C};
+
 	typedef struct i2cChain_t
 	{
 		uint8_t 		busAdr;
@@ -24,6 +27,8 @@ public:
 		uint8_t     	dataSize;
 		i2cChain_t * 	next;
 		uint32_t        cnt;
+		busMode_t         i2ctype;
+
 		uint32_t        period;
 		uint32_t        tick;
 		bool 			isExecute;
@@ -33,6 +38,11 @@ public:
 
 public:
 	i2cChain_t chain[NUM_AREAS] ;
+
+	uint32_t overload ;
+
+	void selectPins(busMode_t i2ctype);
+
 
 	void Start();
 	void singleEvent();

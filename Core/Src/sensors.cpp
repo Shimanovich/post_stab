@@ -46,23 +46,39 @@ uint32_t sensors::get_yaw	(float * yaw)
 
 
 
-
-uint32_t sensors::get_gyro	(float * gdata)
+void sensors::get_gyro(float * gdata, uint8_t * in_ptr)
 {
-	uint8_t buf[6];
-	copysave( buf,this->raw_imu_gyro, 6);
+	uint8_t buf[2];
+	copysave( buf,in_ptr, 2);
 	// Gyro (signed 16-bit, big-endian)
 	int16_t gx = (int16_t)((buf[0] << 8) | buf[1]);
-	int16_t gy = (int16_t)((buf[2] << 8) | buf[3]);
-	int16_t gz = (int16_t)((buf[4] << 8) | buf[5]);
+	//int16_t gy = (int16_t)((buf[2] << 8) | buf[3]);
+	//int16_t gz = (int16_t)((buf[4] << 8) | buf[5]);
 
 	const float gyro_sensitivity  = 65.5f/0.01745329252f;
 	gdata[0]  = (float)gx / gyro_sensitivity;
-	gdata[1]  = (float)gy / gyro_sensitivity;
-	gdata[2]  = (float)gz / gyro_sensitivity;
+	//gdata[1]  = (float)gy / gyro_sensitivity;
+	//gdata[2]  = (float)gz / gyro_sensitivity;
+
+
+}
+
+
+uint32_t sensors::get_gyro_gimb	(float * gdata)
+{
+	this->get_gyro(gdata,this->raw_imu_gyro_gimb);
 	return chain[0].cnt;
 
 }
+
+uint32_t sensors::get_gyro_static(float * gdata)
+{
+	this->get_gyro(gdata,this->raw_imu_gyro_static);
+	return chain[1].cnt;
+
+}
+
+
 
 
 uint32_t sensors::get_temp	(float * temp)
@@ -81,52 +97,73 @@ sensors::~sensors() {
 void sensors::init_chain()
 {
 
+	int id ;
 
-	this->chain[0].bufAdr 	= this->raw_imu_gyro;
-	this->chain[0].busAdr 	= 0x68;
-	this->chain[0].regAdr 	= 0x43;
-	this->chain[0].dataSize = 6;
-	this->chain[0].period   = 1000/1000; // 1000hz
-	this->chain[0].cnt		= 0;
+	id =0;
+	this->chain[id].bufAdr 	= this->raw_imu_gyro_gimb;
+	this->chain[id].busAdr 	= 0x68;
+	this->chain[id].regAdr 	= 0x43; // get only 0axis
+	this->chain[id].dataSize = 2;
+	this->chain[id].period   = 1000/1000; // 1000hz
+	this->chain[id].cnt		= 0;
+	this->chain[id].i2ctype  = ALT_I2C;
 
-	this->chain[1].bufAdr 	= this->raw_pitch_enc;
-	this->chain[1].busAdr 	= 0x30;
-	this->chain[1].regAdr 	= 0x20;
-	this->chain[1].dataSize = 4;
-	this->chain[1].period   = 1000/1000; // 100hz
-	this->chain[1].cnt		= 0;
+	id =1;
+	this->chain[id].bufAdr 	= this->raw_imu_gyro_static;
+	this->chain[id].busAdr 	= 0x68;
+	this->chain[id].regAdr 	= 0x43+2; // get only 1 axis
+	this->chain[id].dataSize = 2;
+	this->chain[id].period   = 1000/1000; // 1000hz
+	this->chain[id].cnt		= 0;
+	this->chain[id].i2ctype  = MAIN_I2C;
 
+	id =2;
+	this->chain[id].bufAdr 	= this->raw_pitch_enc;
+	this->chain[id].busAdr 	= 0x30;
+	this->chain[id].regAdr 	= 0x20;
+	this->chain[id].dataSize = 4;
+	this->chain[id].period   = 1000/1000; // 100hz
+	this->chain[id].cnt		= 0;
+	this->chain[id].i2ctype  = ALT_I2C;
 
-	this->chain[2].bufAdr 	= this->raw_yaw_enc;
-	this->chain[2].busAdr 	= 0x31;
-	this->chain[2].regAdr 	= 0x20;
-	this->chain[2].dataSize = 4;
-	this->chain[2].period   = 1000/1000; // 100hz
-	this->chain[2].cnt		= 0;
+	id =3;
+	this->chain[id].bufAdr 	= this->raw_yaw_enc;
+	this->chain[id].busAdr 	= 0x31;
+	this->chain[id].regAdr 	= 0x20;
+	this->chain[id].dataSize = 4;
+	this->chain[id].period   = 1000/1000; // 100hz
+	this->chain[id].cnt		= 0;
+	this->chain[id].i2ctype  = ALT_I2C;
 
-	this->chain[3].bufAdr 	= this->raw_temp;
-	this->chain[3].busAdr 	= 0x68;
-	this->chain[3].regAdr 	= 0x41;
-	this->chain[3].dataSize = 2;
-	this->chain[3].period   = 5000; // 0.5
-	this->chain[3].cnt		= 0;
+	id =4;
+	this->chain[id].bufAdr 	= this->raw_temp;
+	this->chain[id].busAdr 	= 0x68;
+	this->chain[id].regAdr 	= 0x41;
+	this->chain[id].dataSize = 2;
+	this->chain[id].period   = 5000; // 0.5
+	this->chain[id].cnt		= 0;
+	this->chain[id].i2ctype  = ALT_I2C;
 
-	this->chain[4].bufAdr 	= 0;
-	this->chain[4].busAdr 	= 0;
-	this->chain[4].regAdr 	= 0;
-	this->chain[4].dataSize = 0;
-	this->chain[4].period   = 1; // 0.5
-	this->chain[4].isExecute = true;
-	this->chain[4].cnt		= 0;
+	id =5;
+	this->chain[id].bufAdr 	= 0;
+	this->chain[id].busAdr 	= 0;
+	this->chain[id].regAdr 	= 0;
+	this->chain[id].dataSize = 0;
+	this->chain[id].period   = 1; // 0.5
+	this->chain[id].isExecute = true;
+	this->chain[id].cnt		= 0;
+	this->chain[id].i2ctype  = ALT_I2C;
 
 	extern void step_motor();
-	this->chain[4].funcptr = step_motor;
+	this->chain[id].funcptr = step_motor;
+
 
 	this->chain[0].next = &this->chain[1];
 	this->chain[1].next = &this->chain[2];
 	this->chain[2].next = &this->chain[3];
 	this->chain[3].next = &this->chain[4];
-	this->chain[4].next = nullptr;
+	this->chain[4].next = &this->chain[5];
+	this->chain[5].next = nullptr;
 }
 
 

@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "i2c.h"
+#include "stdio.h"
 
 /* USER CODE BEGIN 0 */
 
@@ -41,9 +42,11 @@ void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing =     0x00100206;   // imu 5 khz
+
   //hi2c1.Init.Timing =   0x0010020A;
-  //hi2c1.Init.Timing =     0x00100206;   // imu 5 khz
-  hi2c1.Init.Timing =   0x0010020A;
+
+  //hi2c1.Init.Timing =   0x0010040b;
 
 
   //hi2c1.Init.Timing = 0x00300C28;
@@ -80,6 +83,86 @@ void MX_I2C1_Init(void)
 
 }
 
+
+
+// Освободить основную пару (PB6/PB7) — перевести в output OD + high
+void I2C1_Release_MainPins(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6 | GPIO_PIN_7, GPIO_PIN_SET);
+}
+
+// Настроить альтернативную пару (PA14/PA15) — AF4 I2C1
+void I2C1_Configure_AltPins(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+
+    GPIO_InitStruct.Pin = GPIO_PIN_14 | GPIO_PIN_15;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
+// Аналогично для обратного переключения (освободить alt + настроить main)
+void I2C1_Release_AltPins(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin = GPIO_PIN_14 | GPIO_PIN_15;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_SET);
+}
+
+void I2C1_Configure_MainPins(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+
+void Switch_I2C1_to_Alt(void)
+{
+    if (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY) {
+        // Здесь можно добавить ожидание или вернуть ошибку
+    	printf("i2c Not Ready err");
+        return;
+    }
+
+    I2C1_Release_MainPins();      // освободить PB6/PB7
+    I2C1_Configure_AltPins();     // подключить PA14/PA15
+
+    // Готово. I2C1 теперь работает на альтернативных пинах.
+    // Можно сразу делать HAL_I2C_Master_Transmit и т.д.
+}
+
+void Switch_I2C1_to_Main(void)
+{
+    if (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY) {
+    	printf("i2c Not Ready err");
+        return;
+    }
+
+    I2C1_Release_AltPins();
+    I2C1_Configure_MainPins();
+}
+
 void HAL_I2C_MspInit(I2C_HandleTypeDef* i2cHandle)
 {
 
@@ -110,10 +193,10 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* i2cHandle)
 
 
         /* USER CODE BEGIN I2C1_MspInit 1 */
-        HAL_NVIC_SetPriority(I2C1_EV_IRQn, 5, 0);
+        HAL_NVIC_SetPriority(I2C1_EV_IRQn, 4, 0);
         HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
 
-        HAL_NVIC_SetPriority(I2C1_ER_IRQn, 5, 0);
+        HAL_NVIC_SetPriority(I2C1_ER_IRQn, 4, 0);
 	    HAL_NVIC_EnableIRQ(I2C1_ER_IRQn);
 	    /* USER CODE END I2C1_MspInit 1 */
 

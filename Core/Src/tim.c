@@ -143,6 +143,7 @@ void MX_TIM6_Init(void) // 1 мс
   //htim6.Init.Prescaler = 103;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim6.Init.Period = 999;                      // ARR = 1000 → ~1 мс (см. расчёт ниже)
+  //htim6.Init.Period = 1999;
   htim6.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 

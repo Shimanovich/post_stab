@@ -6,6 +6,7 @@
  */
 
 #include "sensorProc.h"
+#include "i2c.h"
 
 
 sensor_Proc::sensor_Proc(I2C_HandleTypeDef *hi2c) {
@@ -14,6 +15,7 @@ sensor_Proc::sensor_Proc(I2C_HandleTypeDef *hi2c) {
 	this->active = &this->chain[0];
 	this->isActive = false;
 	this->isStoped = true;
+	this->overload =0;
 
 	for (int i=0;i<NUM_AREAS;i++ )
 	{
@@ -39,10 +41,27 @@ void sensor_Proc::Start()
 		this->active = &this->chain[0];
 		this->isActive = true;
 		this->isStoped = false;
+		this->selectPins(this->chain[0].i2ctype);
 		this->singleEvent();
+		this->overload++;
 
 }
 
+
+
+void sensor_Proc::selectPins(busMode_t i2ctype)
+{
+	if(i2ctype == MAIN_I2C)
+	{
+		Switch_I2C1_to_Main();
+		return;
+	}
+	if (i2ctype == ALT_I2C)
+	{
+		Switch_I2C1_to_Alt();
+		return;
+	}
+}
 
 void sensor_Proc::singleEvent()
 {
@@ -61,6 +80,7 @@ void sensor_Proc::singleEvent()
 			}
 			else
 			if ((active->bufAdr) && (active->dataSize)) {
+				this->selectPins(active->i2ctype);
 				HAL_I2C_Mem_Read_DMA(this->hi2c, (active->busAdr << 1),
 						active->regAdr, I2C_MEMADD_SIZE_8BIT,
 						(uint8_t*) active->bufAdr, active->dataSize);
@@ -70,6 +90,7 @@ void sensor_Proc::singleEvent()
 
 			if (active == nullptr) {
 				this->isActive = false;
+				this->overload--;
 			}
 		}
 		else

@@ -40,6 +40,9 @@ extern I2C_HandleTypeDef hi2c1;
 
 void MX_I2C1_Init(void);
 
+void Switch_I2C1_to_Alt(void);
+void Switch_I2C1_to_Main(void);
+
 /* USER CODE BEGIN Prototypes */
 
 /* USER CODE END Prototypes */

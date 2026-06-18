@@ -211,6 +211,13 @@ void TIM6_DAC_IRQHandler(void)
   HAL_TIM_IRQHandler(&htim6);
 }
 
+extern UART_HandleTypeDef huart1;   // или huart1
+
+void USART1_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&huart1);
+}
+
 /**
   * @brief This function handles System tick timer.
   */
