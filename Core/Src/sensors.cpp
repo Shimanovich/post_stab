@@ -97,6 +97,7 @@ sensors::~sensors() {
 void sensors::init_chain()
 {
 
+	this->overload = 0;
 	int id ;
 
 	id =0;

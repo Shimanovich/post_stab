@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 extern I2C_HandleTypeDef hi2c1;
 extern TIM_HandleTypeDef htim6;
+extern DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE END Includes */
 
@@ -218,6 +219,10 @@ void USART1_IRQHandler(void)
     HAL_UART_IRQHandler(&huart1);
 }
 
+void DMA1_Channel5_IRQHandler(void)
+{
+    HAL_DMA_IRQHandler(&hdma_usart1_rx);
+}
 /**
   * @brief This function handles System tick timer.
   */
