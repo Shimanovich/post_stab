@@ -35,10 +35,9 @@
 #include "AM4096.h"
 #include "icm20602.h"
 #include "sensors.h"
-#include "encoderEmulator.h"
-//#include "Commander.h"
 #include "uartParcer.h"
 #include "bytefifo.h"
+#include "encoderDataDma.h"
 #include "LADRC_SpeedController.h"
 
 #define FILTER_AHRS_ENABLED
@@ -106,8 +105,8 @@ PIDController  outPitchPID = PIDController(DEF_PID_VEL_P,DEF_PID_VEL_I,DEF_PID_V
 AM4096 		pitch_encoder;
 AM4096 		yaw_encoder;
 
-emulator    pitchEmulator;
-emulator    yawEmulator;
+dataDma    pitchDma;
+dataDma    yawDma;
 
 ICM20602  	frameImu;
 ICM20602  	baseImu;
@@ -290,6 +289,9 @@ void step_motor() {
 
     	float innerLoopSpeed = inPitchPID( el_speed - gxyz[0]);
 
+
+    	//motor1.shaft_velocity  - содердит последнюю измеренную ао энкодерам скорость ()такой доступ нужен что-бв не вызывать getVelocity(),
+    	// вне интервала в 1 кгц
     	float outerLoopSpeed = outPitchPID( innerLoopSpeed-motor1.shaft_velocity);
 
     	motor1.move(-outerLoopSpeed);
@@ -347,12 +349,12 @@ void initMotor(void)
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
 	    motor0.init();
-	    motor0.sensor = &yawEmulator;
+	    motor0.sensor = &yawDma;
 
 	    driverMot1.init();
 	    motor1.linkDriver(&driverMot1);
 	    motor1.init();
-	    motor1.sensor = &pitchEmulator;
+	    motor1.sensor = &pitchDma;
 
 
 
@@ -551,8 +553,8 @@ void run_encoder_test()
 //	pitchEmulator.begin(chainI2C.raw_pitch_enc);
 //	yawEmulator.begin(chainI2C.raw_yaw_enc);
 
-	pitchEmulator.begin(chainI2C.raw_pitch_enc, chainI2C.raw_imu_gyro_gimb);
-	  yawEmulator.begin(chainI2C.raw_yaw_enc,   chainI2C.raw_imu_gyro_gimb);
+	pitchDma.begin(chainI2C.raw_pitch_enc, chainI2C.raw_imu_gyro_gimb);
+	  yawDma.begin(chainI2C.raw_yaw_enc,   chainI2C.raw_imu_gyro_gimb);
 
 
 	DWT_Init();
