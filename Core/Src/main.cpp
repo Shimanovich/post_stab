@@ -99,8 +99,8 @@ BLDCMotor motor1 = BLDCMotor(7);
 //#define DEF_PID_VEL_U_RAMP 1000.0 //!< default PID controller voltage ramp value
 
 
-PIDController  inPitchPID = PIDController(DEF_PID_VEL_P,DEF_PID_VEL_I,DEF_PID_VEL_D,DEF_PID_VEL_U_RAMP,30.0f);
-PIDController  outPitchPID = PIDController(DEF_PID_VEL_P,DEF_PID_VEL_I,DEF_PID_VEL_D,DEF_PID_VEL_U_RAMP,30.0f);
+PIDController  stabilizationPID = PIDController(DEF_PID_VEL_P,DEF_PID_VEL_I,DEF_PID_VEL_D,DEF_PID_VEL_U_RAMP,30.0f);
+PIDController  velocityPID = PIDController(DEF_PID_VEL_P,DEF_PID_VEL_I,DEF_PID_VEL_D,DEF_PID_VEL_U_RAMP,30.0f);
 
 AM4096 		pitch_encoder;
 AM4096 		yaw_encoder;
@@ -277,36 +277,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 
 void step_motor() {
-    float gxyz[3];
-    gxyz[0] = 0.0f;
-    gxyz[1] = 0.0f;
-    gxyz[2] = 0.0f;
-
-
-    if (chainI2C.get_gyro_gimb(gxyz) > 10) {
-
-
-
-    	float innerLoopSpeed = inPitchPID( el_speed - gxyz[0]);
-
-
-    	//motor1.shaft_velocity  - содердит последнюю измеренную ао энкодерам скорость ()такой доступ нужен что-бв не вызывать getVelocity(),
-    	// вне интервала в 1 кгц
-    	float outerLoopSpeed = outPitchPID( innerLoopSpeed-motor1.shaft_velocity);
-
-    	motor1.move(-outerLoopSpeed);
+    float gxyz[3] = {0};
+    if (chainI2C.get_gyro_gimb(gxyz) > 0) {
+        float desiredRelSpeed = stabilizationPID( el_speed - gxyz[0] );   // только outer
+        motor1.loopFOC();
+        motor1.move( -desiredRelSpeed );   // библиотека сама закроет velocity loop
     }
-
-
-
-//    if (chainI2C.get_gyro_static(gxyz) > 10) {
-//
-//    	float innerLoopSpeed = inPitchPID(el_speed );
-//
-//
-//      	motor0.move(innerLoopSpeed);
-//        }
-
 }
 
 
@@ -330,21 +306,20 @@ void initMotor(void)
 	    motor0.pole_pairs = 7;
 	    motor0.voltage_limit = vl;
 	    motor0.velocity_limit = 30.1f;
-	    motor0.controller = ControlType::velocity_openloop;
+	    motor0.controller = ControlType::velocity;
 
 	    driverMot1.voltage_power_supply = vm;
 	    driverMot1.voltage_limit = vl;
 	    motor1.pole_pairs = 7;
 	    motor1.voltage_limit = vl;
 	    motor1.velocity_limit = 30.0f;
-	    motor1.controller = ControlType::velocity_openloop;
+	    motor1.controller = ControlType::velocity;
 
-//	    // === Настройка PID скорости (ОБЯЗАТЕЛЬНО тюнить!) ===
-//	    motor1.PID_velocity.P = 1.0;     // Пропорционал — начинайте с 0.05–0.2
-//	    motor1.PID_velocity.I = 0.0;      // Интеграл — пока 0, добавляйте позже
-//	    motor1.PID_velocity.D = 0.02;     // Дифференциал — помогает гасить колебания
-//	    motor1.LPF_velocity.Tf = 0.02;   // Фильтр скорости (секунды)
-
+	    motor1.PID_velocity.P = 0.5f;   // если используете режим velocity
+	    motor1.PID_velocity.I = 10.0f;
+	    motor1.PID_velocity.D = 0.0f;
+	    motor1.PID_velocity.output_ramp = 1000.0f;
+	    motor1.voltage_limit = 7.0f;
 
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
