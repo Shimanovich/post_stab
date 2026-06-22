@@ -290,7 +290,7 @@ void step_motor() {
 
     	float innerLoopSpeed = inPitchPID( el_speed - gxyz[0]);
 
-    	float outerLoopSpeed = inPitchPID( -(innerLoopSpeed-motor1.shaft_velocity));
+    	float outerLoopSpeed = outPitchPID( innerLoopSpeed-motor1.shaft_velocity);
 
     	motor1.move(-outerLoopSpeed);
     }
