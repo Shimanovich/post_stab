@@ -55,7 +55,7 @@ void sensors::get_gyro(float * gdata, uint8_t * in_ptr)
 	//int16_t gy = (int16_t)((buf[2] << 8) | buf[3]);
 	//int16_t gz = (int16_t)((buf[4] << 8) | buf[5]);
 
-	const float gyro_sensitivity  = 65.5f/0.01745329252f;
+	const float gyro_sensitivity  = 131.0f/0.01745329252f;
 	gdata[0]  = (float)gx / gyro_sensitivity;
 	//gdata[1]  = (float)gy / gyro_sensitivity;
 	//gdata[2]  = (float)gz / gyro_sensitivity;

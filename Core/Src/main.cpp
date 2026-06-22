@@ -39,6 +39,12 @@
 //#include "Commander.h"
 #include "uartParcer.h"
 #include "bytefifo.h"
+#include "LADRC_SpeedController.h"
+
+#define FILTER_AHRS_ENABLED
+#include "filter_ahrs.h"
+
+
 
 /* USER CODE END Includes */
 
@@ -85,6 +91,18 @@ BLDCDriver3PWM driverMot1(&htim3, TIM_CHANNEL_2, &htim3, TIM_CHANNEL_3, &htim3, 
 BLDCMotor motor0 = BLDCMotor(7);
 BLDCMotor motor1 = BLDCMotor(7);
 
+
+//#define DEF_POWER_SUPPLY 14.0 //!< default power supply voltage
+//// velocity PI controller params
+//#define DEF_PID_VEL_P 0.5 //!< default PID controller P value
+//#define DEF_PID_VEL_I 10.0 //!<  default PID controller I value
+//#define DEF_PID_VEL_D 0.0 //!<  default PID controller D value
+//#define DEF_PID_VEL_U_RAMP 1000.0 //!< default PID controller voltage ramp value
+
+
+PIDController  inPitchPID = PIDController(DEF_PID_VEL_P,DEF_PID_VEL_I,DEF_PID_VEL_D,DEF_PID_VEL_U_RAMP,30.0f);
+PIDController  outPitchPID = PIDController(DEF_PID_VEL_P,DEF_PID_VEL_I,DEF_PID_VEL_D,DEF_PID_VEL_U_RAMP,30.0f);
+
 AM4096 		pitch_encoder;
 AM4096 		yaw_encoder;
 
@@ -93,31 +111,22 @@ emulator    yawEmulator;
 
 ICM20602  	frameImu;
 ICM20602  	baseImu;
+static filter_ctx_t  filter_ctx;
+
+
 
 UartProtocolParser parser;
 
 ByteFifo fifo(32);
 
-LowPassFilter LPF_velocity(0.05);
+
 
 float az_spped = 0;
 
-float el_spped = 0;
+float el_speed = 0;
 
 
-void azSpeed_Set(char * cmd)
-{
-	float val = atof(cmd);
 
-
-	az_spped = val;
-}
-
-void elSpeed_Set(char * cmd)
-{
-	float val = atof(cmd);
-	el_spped = val;
-}
 
 
 sensors chainI2C = sensors(&hi2c1);
@@ -270,20 +279,31 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void step_motor() {
     float gxyz[3];
+    gxyz[0] = 0.0f;
+    gxyz[1] = 0.0f;
+    gxyz[2] = 0.0f;
+
+
     if (chainI2C.get_gyro_gimb(gxyz) > 10) {
 
-    	float target_vel = - (gxyz[0]-gyro_Shift);
 
-    	//motor1.move(target_vel + el_spped );
-    	//motor1.move(el_spped);
+
+    	float innerLoopSpeed = inPitchPID( el_speed - gxyz[0]);
+
+    	float outerLoopSpeed = inPitchPID( -(innerLoopSpeed-motor1.shaft_velocity));
+
+    	motor1.move(-outerLoopSpeed);
     }
-    if (chainI2C.get_gyro_static(gxyz) > 10) {
 
 
-      	float target_vel = - (gxyz[0]-gyro_Shift);
-      	//motor0.move(target_vel + az_spped );
-      	//motor0.move( az_spped);
-        }
+
+//    if (chainI2C.get_gyro_static(gxyz) > 10) {
+//
+//    	float innerLoopSpeed = inPitchPID(el_speed );
+//
+//
+//      	motor0.move(innerLoopSpeed);
+//        }
 
 }
 
@@ -342,7 +362,8 @@ void initMotor(void)
 	    printf("start\n\r");
 
 
-
+	    Filter_Init(&filter_ctx, "AHRS");
+	    filter_ctx.mode = 5;
 
 
 }
@@ -559,8 +580,15 @@ void run_encoder_test()
 
 	parser.registerHandler(0x0002, [](uint16_t key, uint32_t value) {
 	    // Команда
-	    el_spped = *(float*)&value;
+	    el_speed = *(float*)&value;
 	    //printf("el %f\n\r",el_spped);
+	});
+
+
+	parser.registerHandler(0x0003, [](uint16_t key, uint32_t value) {
+	    // Команда
+
+
 	});
 
 	// Опционально — обработчик всех неизвестных ключей
@@ -595,7 +623,6 @@ void run_encoder_test()
 	{
 			{
 
-
 				if (chainI2C.overload>10)
 				{
 					chainI2C.overload=0;
@@ -604,14 +631,17 @@ void run_encoder_test()
 					HAL_TIM_Base_Start_IT(&htim6);
 				}
 
-					printf(">px:%f\n",pitchEmulator.getAngle());
-					printf(">vx:%f\n",motor1.shaft_velocity_sp);
+					//printf(">px:%f\n",pitchEmulator.getAngle());
+
+					printf(">vp:%f\n",motor1.shaft_velocity_sp);
+					printf(">va:%f\n",motor0.shaft_velocity_sp);
+
 
 					chainI2C.get_gyro_gimb(&w);
-					printf(">gx:%f\n",w);
+					printf(">gp:%f\n",w);
 
 					chainI2C.get_gyro_static(&w);
-					printf(">s0:%f\n",w);
+					printf(">ga:%f\n",w);
 //					printf(">s1:%f\n",gxyz[1]);
 //					printf(">s2:%f\n",gxyz[2]);
 

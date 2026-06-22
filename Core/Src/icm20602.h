@@ -31,6 +31,8 @@
 // Масштабы по умолчанию
 #define ICM20602_ACCEL_FS_2G     0x00  // ±2g
 #define ICM20602_GYRO_FS_500DPS  0x01  // ±500 dps
+
+#define ICM20602_GYRO_FS_250DPS  0x00  // ±500 dps
 #define ICM20602_ACCEL_DLPF_BYP  0x09  // Bypass 1046 Hz
 #define ICM20602_GYRO_DLPF_20HZ  0x05  // 20 Hz
 
@@ -120,10 +122,10 @@ int8_t ICM20602::begin(I2C_HandleTypeDef* hi2c, uint8_t addr) {
     if (ret != 0) return ret;
 
     // Конфигурация гироскопа: 1KHZ
-    ret = write_reg(ICM20602_CONFIG, 0x01);
+    ret = write_reg(ICM20602_CONFIG, 0x03);
     if (ret != 0) return ret;
 
-    ret = write_reg(ICM20602_GYRO_CONFIG, (ICM20602_GYRO_FS_500DPS << 3) | 0x00);// FCHOICE_B = 00 (DLPF включён)
+    ret = write_reg(ICM20602_GYRO_CONFIG, (ICM20602_GYRO_FS_250DPS << 3) | 0x00);// FCHOICE_B = 00 (DLPF включён)
     if (ret != 0) return ret;
 
     // Делитель частоты выборки (~1000 Гц)
@@ -165,7 +167,7 @@ int8_t ICM20602::read(float gyro[3], float accel[3], float* temp) {
 
     // Чувствительность по умолчанию (из настроек begin())
     const float accel_sensitivity = 16384.0f;   // LSB/g для ±2g
-    const float gyro_sensitivity  = 65.5f;      // LSB/(°/s) для ±500 dps
+    const float gyro_sensitivity  = 131.0f;      // LSB/(°/s) для ±500 dps
 
     accel[0] = (float)ax / accel_sensitivity;
     accel[1] = (float)ay / accel_sensitivity;
