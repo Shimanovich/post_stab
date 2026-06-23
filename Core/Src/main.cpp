@@ -277,8 +277,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 
 void step_motor() {
-//    float gxyz[3] = {0};
-//    if (chainI2C.get_gyro_gimb(gxyz) > 0) {
+
 //        float desiredRelSpeed = stabilizationPID( el_speed - gxyz[0] );   // только outer
 //        motor1.loopFOC();
 //        motor1.move( -desiredRelSpeed );   // библиотека сама закроет velocity loop
@@ -288,8 +287,12 @@ void step_motor() {
 //    }
 
 
-	  motor1.move( el_speed );
+	float gxyz[3] = {0};
+    if (chainI2C.get_gyro_gimb(gxyz) > 0) {
 	  motor1.loopFOC();
+	  motor1.move( el_speed );
+    }
+
 
 
 }
@@ -307,7 +310,7 @@ void initMotor(void)
 
 
 		float vm = 14.0f;
-		float vl = 7.0f;
+		float vl = 4.0f;
 
 
 	    driverMot0.voltage_power_supply = vm;
@@ -324,11 +327,11 @@ void initMotor(void)
 	    motor1.velocity_limit = 30.0f;
 	    motor1.controller = ControlType::velocity;
 
-	    motor1.PID_velocity.P = 0.5f;   // если используете режим velocity
-	    motor1.PID_velocity.I = 10.0f;
+	    motor1.PID_velocity.P = 0.0f;   // если используете режим velocity
+	    motor1.PID_velocity.I = 0.0f;
 	    motor1.PID_velocity.D = 0.0f;
 	    motor1.PID_velocity.output_ramp = 1000.0f;
-	    motor1.voltage_limit = 7.0f;
+	    motor1.PID_velocity.limit = motor1.voltage_limit;
 
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
@@ -602,7 +605,8 @@ void run_encoder_test()
 	    float w;
 
 
-	    el_speed = 0.2;
+	    el_speed = 8.0;
+	    int dir =1;
 	    uint8_t b;
 
 	    uint32_t t_start = HAL_GetTick();
@@ -625,6 +629,10 @@ void run_encoder_test()
 					printf(">vm:%f\n",motor1.shaft_velocity);
 					printf(">vi:%f\n",el_speed);
 
+					printf(">pp:%f\n",motor1.shaft_angle);
+
+					printf(">vq:%f\n",motor1.voltage_q);
+					printf(">dv:%f\n", motor1.shaft_velocity_sp - motor1.shaft_velocity);
 
 //					chainI2C.get_gyro_gimb(&w);
 //					printf(">gp:%f\n",w);
@@ -637,9 +645,15 @@ void run_encoder_test()
 //					printf(">Av:%f\n",az_spped);
 //					printf(">Pv:%f\n",el_spped);
 
-					if ((t_start + 3000)<HAL_GetTick() )
+					if ((motor1.shaft_angle<-0.5)&&(dir==0))
 					{
-						t_start = HAL_GetTick();
+						dir = 1;
+						el_speed = -el_speed;
+					}
+
+					if ((motor1.shaft_angle>1.2)&&(dir==1))
+					{
+						dir = 0;
 						el_speed = -el_speed;
 					}
 

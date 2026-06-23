@@ -24,9 +24,9 @@ FOCMotor::FOCMotor()
   zero_electric_angle = 0;
 
   // default modulation is SinePWM
-  //foc_modulation = FOCModulationType::SpaceVectorPWM;
+  foc_modulation = FOCModulationType::SpaceVectorPWM;
 
-  foc_modulation = FOCModulationType::SinePWM;
+  //foc_modulation = FOCModulationType::SinePWM;
 
   // default target value
   target = 0;
