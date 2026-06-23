@@ -72,4 +72,6 @@ void BLDCDriver3PWM::setPwm(float Ua, float Ub, float Uc)
 	    __HAL_TIM_SET_COMPARE(_timB, _channelB, pwmB);
 	    __HAL_TIM_SET_COMPARE(_timC, _channelC, pwmC);
 
+
+
 }

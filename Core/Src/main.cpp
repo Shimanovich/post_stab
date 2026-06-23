@@ -290,6 +290,7 @@ void step_motor() {
 	float gxyz[3] = {0};
     if (chainI2C.get_gyro_gimb(gxyz) > 0) {
 	  motor1.loopFOC();
+
 	  motor1.move( el_speed );
     }
 
@@ -310,7 +311,7 @@ void initMotor(void)
 
 
 		float vm = 14.0f;
-		float vl = 4.0f;
+		float vl = 9.0f;
 
 
 	    driverMot0.voltage_power_supply = vm;
@@ -605,7 +606,7 @@ void run_encoder_test()
 	    float w;
 
 
-	    el_speed = 8.0;
+	    el_speed = -8.0;
 	    int dir =1;
 	    uint8_t b;
 
@@ -648,13 +649,13 @@ void run_encoder_test()
 					if ((motor1.shaft_angle<-0.5)&&(dir==0))
 					{
 						dir = 1;
-						el_speed = -el_speed;
+						el_speed = +5.0;
 					}
 
-					if ((motor1.shaft_angle>1.2)&&(dir==1))
+					if ((motor1.shaft_angle>0.8)&&(dir==1))
 					{
 						dir = 0;
-						el_speed = -el_speed;
+						el_speed = -5.0;
 					}
 
 
