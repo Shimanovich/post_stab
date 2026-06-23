@@ -277,12 +277,21 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 
 void step_motor() {
-    float gxyz[3] = {0};
-    if (chainI2C.get_gyro_gimb(gxyz) > 0) {
-        float desiredRelSpeed = stabilizationPID( el_speed - gxyz[0] );   // только outer
-        motor1.loopFOC();
-        motor1.move( -desiredRelSpeed );   // библиотека сама закроет velocity loop
-    }
+//    float gxyz[3] = {0};
+//    if (chainI2C.get_gyro_gimb(gxyz) > 0) {
+//        float desiredRelSpeed = stabilizationPID( el_speed - gxyz[0] );   // только outer
+//        motor1.loopFOC();
+//        motor1.move( -desiredRelSpeed );   // библиотека сама закроет velocity loop
+//
+//
+//
+//    }
+
+
+	  motor1.move( el_speed );
+	  motor1.loopFOC();
+
+
 }
 
 
@@ -549,24 +558,23 @@ void run_encoder_test()
 
 
 	// Привязываем обработчики к ключам
-	parser.registerHandler(0x0001, [](uint16_t key, uint32_t value) {
-	    // Обработка параметра 0x0001
-	    az_spped = *(float*)&value;
-	    //printf("az %f\n\r",az_spped);
-	});
-
-	parser.registerHandler(0x0002, [](uint16_t key, uint32_t value) {
-	    // Команда
-	    el_speed = *(float*)&value;
-	    //printf("el %f\n\r",el_spped);
-	});
+	parser.registerHandler(0x0001, [](uint16_t key, uint32_t value) { az_spped = *(float*)&value;});
+	parser.registerHandler(0x0002, [](uint16_t key, uint32_t value) {  el_speed = *(float*)&value;});
 
 
-	parser.registerHandler(0x0003, [](uint16_t key, uint32_t value) {
-	    // Команда
+	parser.registerHandler(0x0003, [](uint16_t key, uint32_t value) {motor0.PID_velocity.P = *(float*)&value;});
+	parser.registerHandler(0x0004, [](uint16_t key, uint32_t value) {motor0.PID_velocity.I = *(float*)&value;});
+	parser.registerHandler(0x0005, [](uint16_t key, uint32_t value) {motor0.PID_velocity.D = *(float*)&value;});
 
 
-	});
+	parser.registerHandler(0x0013, [](uint16_t key, uint32_t value) {motor1.PID_velocity.P = *(float*)&value;});
+	parser.registerHandler(0x0014, [](uint16_t key, uint32_t value) {motor1.PID_velocity.I = *(float*)&value;});
+	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {motor1.PID_velocity.D = *(float*)&value;});
+
+
+
+
+
 
 	// Опционально — обработчик всех неизвестных ключей
 	parser.setDefaultHandler([](uint16_t key, uint32_t value) {
@@ -594,14 +602,17 @@ void run_encoder_test()
 	    float w;
 
 
-
+	    el_speed = 0.2;
 	    uint8_t b;
+
+	    uint32_t t_start = HAL_GetTick();
+
 	while(1)
 	{
-			{
 
 				if (chainI2C.overload>10)
 				{
+					printf(">ov:%d\n",chainI2C.overload);
 					chainI2C.overload=0;
 					HAL_TIM_Base_Stop_IT(&htim6);
 					I2C_Recover(&hi2c1);
@@ -610,34 +621,38 @@ void run_encoder_test()
 
 					//printf(">px:%f\n",pitchEmulator.getAngle());
 
-					printf(">vp:%f\n",motor1.shaft_velocity_sp);
-					printf(">va:%f\n",motor0.shaft_velocity_sp);
+					//printf(">vp:%f\n",motor1.shaft_velocity_sp);
+					printf(">vm:%f\n",motor1.shaft_velocity);
+					printf(">vi:%f\n",el_speed);
 
 
-					chainI2C.get_gyro_gimb(&w);
-					printf(">gp:%f\n",w);
-
-					chainI2C.get_gyro_static(&w);
-					printf(">ga:%f\n",w);
+//					chainI2C.get_gyro_gimb(&w);
+//					printf(">gp:%f\n",w);
+//
+//					chainI2C.get_gyro_static(&w);
+//					printf(">ga:%f\n",w);
 //					printf(">s1:%f\n",gxyz[1]);
 //					printf(">s2:%f\n",gxyz[2]);
 
 //					printf(">Av:%f\n",az_spped);
 //					printf(">Pv:%f\n",el_spped);
 
-					printf(">ov:%d\n",chainI2C.overload);
+					if ((t_start + 3000)<HAL_GetTick() )
+					{
+						t_start = HAL_GetTick();
+						el_speed = -el_speed;
+					}
 
 
 
 					if (fifo.pop(b))
 					{
-						//commander.processIncomingChar(b);
 						parser.feed(b);
 					}
 //					HAL_UART_Receive(&huart1, &rx_byte, 1,1);
 //					commander.processIncomingChar(rx_byte);
 					//HAL_Delay(1);
-				}
+
 	}
 
 
