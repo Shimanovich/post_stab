@@ -326,7 +326,7 @@ void initMotor(void)
 	    motor1.pole_pairs = 7;
 	    motor1.voltage_limit = vl;
 	    motor1.velocity_limit = 30.0f;
-	    motor1.controller = ControlType::velocity;
+	    motor1.controller = ControlType::velocity_openloop;
 
 	    motor1.PID_velocity.P = 0.0f;   // если используете режим velocity
 	    motor1.PID_velocity.I = 0.0f;

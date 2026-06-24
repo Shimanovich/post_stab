@@ -32,13 +32,16 @@ public:
 
 	        float angle = natural_direction * (((float)pos * 2.0f * PI) / 4096.0f - zero_offset);
 
-	        // Приводим к диапазону (-π, π]
-	            angle = _normalizeAngle(angle);     // ← лучше всего вызвать эту функцию
-	            return angle;
+	        // Нормализация в [-π, π]
+
+	        angle = fmodf(angle + PI, 2.0f * PI);
+	        if (angle < 0) angle += 2.0f * PI;
+	        return angle - PI;
 	    }
 
 	    float getVelocity() override {
 	        float current_angle = getAngle();
+
 
 	        if (first_velocity) {
 	            prev_angle = current_angle;
