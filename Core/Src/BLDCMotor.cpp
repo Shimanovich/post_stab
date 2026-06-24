@@ -217,7 +217,12 @@ void BLDCMotor::move(float new_target) {
       // velocity set point
       // include velocity loop
       shaft_velocity_sp = target;
-      voltage_q = PID_velocity(shaft_velocity_sp - shaft_velocity);
+      voltage_q = PID_velocity(-(shaft_velocity_sp - shaft_velocity));
+
+      shaft_angle = _normalizeAngle(shaftAngle());
+      // set the phase voltage - FOC heart function :)
+      eangle = _electricalAngle(shaft_angle,pole_pairs);
+      setPhaseVoltage(voltage_q, 0, eangle);
       break;
     case ControlType::velocity_openloop:
       // velocity control in open loop
@@ -286,7 +291,6 @@ void BLDCMotor::setPhaseVoltage(float Uq, float Ud, float angle_el) {
         Ub += (driver->voltage_limit)/2 -Uq;
         Uc += (driver->voltage_limit)/2 -Uq;
       }
-
     break;
 
     case FOCModulationType::SinePWM :

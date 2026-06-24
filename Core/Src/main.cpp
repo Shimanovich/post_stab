@@ -39,6 +39,7 @@
 #include "bytefifo.h"
 #include "encoderDataDma.h"
 #include "LADRC_SpeedController.h"
+#include <cmath>
 
 #define FILTER_AHRS_ENABLED
 #include "filter_ahrs.h"
@@ -133,37 +134,7 @@ sensors chainI2C = sensors(&hi2c1);
 uint8_t rx_byte;
 float gyro_Shift=0.0f;
 
-//void SetP(char* cmd) {
-//	float val = atof(cmd);
-//	motor1.PID_velocity.P = val;
-//
-// }
-//
-//void SetI(char* cmd) {
-//	float val = atof(cmd);
-//	motor1.PID_velocity.I = val;
-//
-// }
-//
-//void SetD(char* cmd) {
-//	float val = atof(cmd);
-//	motor1.PID_velocity.D = val;
-//
-// }
-//
-//void SetTf(char* cmd) {
-//	float val = atof(cmd);
-//
-//	LPF_velocity.Tf = val;
-//	//motor1.LPF_velocity.Tf = val;
-// }
-//
-//
-//void SetRamp(char* cmd) {
-//	float val = atof(cmd);
-//	printf("x\n");
-//	gyro_Shift = val;
-// }
+
 
 
 
@@ -289,9 +260,9 @@ void step_motor() {
 
 	float gxyz[3] = {0};
     if (chainI2C.get_gyro_gimb(gxyz) > 0) {
-	  motor1.loopFOC();
+	  //motor1.loopFOC();
 
-	  motor1.move( el_speed );
+	  motor1.move(el_speed);
     }
 
 
@@ -326,7 +297,7 @@ void initMotor(void)
 	    motor1.pole_pairs = 7;
 	    motor1.voltage_limit = vl;
 	    motor1.velocity_limit = 30.0f;
-	    motor1.controller = ControlType::velocity_openloop;
+	    motor1.controller = ControlType::velocity;
 
 	    motor1.PID_velocity.P = 0.0f;   // если используете режим velocity
 	    motor1.PID_velocity.I = 0.0f;
@@ -606,7 +577,7 @@ void run_encoder_test()
 	    float w;
 
 
-	    el_speed = -8.0;
+	    el_speed = -1.0;
 	    int dir =1;
 	    uint8_t b;
 
@@ -630,10 +601,14 @@ void run_encoder_test()
 					printf(">vm:%f\n",motor1.shaft_velocity);
 					printf(">vi:%f\n",el_speed);
 
-					printf(">pp:%f\n",motor1.shaft_angle);
 
 					printf(">vq:%f\n",motor1.voltage_q);
 					printf(">dv:%f\n", motor1.shaft_velocity_sp - motor1.shaft_velocity);
+
+					printf(">Ua:%f\n",motor1.Ua);
+					printf(">Ub:%f\n",motor1.Ub);
+					printf(">Uc:%f\n",motor1.Uc);
+
 
 //					chainI2C.get_gyro_gimb(&w);
 //					printf(">gp:%f\n",w);
@@ -646,18 +621,24 @@ void run_encoder_test()
 //					printf(">Av:%f\n",az_spped);
 //					printf(">Pv:%f\n",el_spped);
 
-					if ((motor1.shaft_angle<-0.5)&&(dir==0))
+
+					 float angle = fmodf(motor1.shaft_angle + M_PI, 2.0f * M_PI);
+					 if (angle < 0) angle += 2.0f * M_PI;
+				     angle -= M_PI;
+
+					if ((angle<-0.5)&&(dir==0))
 					{
 						dir = 1;
-						el_speed = +5.0;
+						el_speed = +1.0;
 					}
 
-					if ((motor1.shaft_angle>0.8)&&(dir==1))
+					if ((angle>1.25)&&(dir==1))
 					{
 						dir = 0;
-						el_speed = -5.0;
+						el_speed = -1.0;
 					}
 
+					printf(">pp:%f\n",angle);
 
 
 					if (fifo.pop(b))

@@ -105,6 +105,11 @@ class FOCMotor
     float shaft_angle_sp;//!< current target angle
     float voltage_q;//!< current voltage u_q set
     float voltage_d;//!< current voltage u_d set
+    float eangle;
+    float focUa;
+    float focUb;
+    float focUc;
+
 
     // motor configuration parameters
     float voltage_sensor_align;//!< sensor and motor align voltage parameter
