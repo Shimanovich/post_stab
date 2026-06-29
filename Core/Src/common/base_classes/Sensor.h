@@ -59,6 +59,8 @@ class Sensor{
          * 1 - ecoder with index (with index not found yet)
          */
         virtual int needsAbsoluteZeroSearch(){};
+
+        virtual void update_syncVelocity(){};
 };
 
 #endif /* SENSOR_H_ */

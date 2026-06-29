@@ -115,7 +115,7 @@ int BLDCMotor::alignSensor() {
   for (int i = 0; i <=5; i++ ) {
     float angle = _3PI_2 + _2PI * i / 6.0;
     setPhaseVoltage(voltage_sensor_align, 0,  angle);
-    _delay(200);
+    _delay(400);
   }
   float mid_angle = shaftAngle();
   for (int i = 5; i >=0; i-- ) {
@@ -154,18 +154,22 @@ int BLDCMotor::alignSensor() {
 
 // Encoder alignment the absolute zero angle
 // - to the index
+// ИЗМЕНЕНО: поиск теперь в OPEN LOOP режиме (НЕ требует настроенного PID_velocity)
 int BLDCMotor::absoluteZeroAlign() {
-
-//  if(monitor_port) monitor_port->println("MOT: Absolute zero align.");
-    // if no absolute zero return
+  // if no absolute zero return
   if(!sensor->hasAbsoluteZero()) return 0;
 
-
-//  if(monitor_port && sensor->needsAbsoluteZeroSearch()) monitor_port->println("MOT: Searching...");
-  // search the absolute zero with small velocity
+  // search the absolute zero with small velocity - OPEN LOOP
+  // Вращаем мотор open-loop до нахождения индекса или ~1 механического оборота
   while(sensor->needsAbsoluteZeroSearch() && shaft_angle < _2PI){
-    loopFOC();
-    voltage_q = PID_velocity(velocity_index_search - shaftVelocity());
+    velocityOpenloop(velocity_index_search);
+    // velocityOpenloop делает:
+    //   - shaft_angle = _normalizeAngle(shaft_angle + target_velocity * Ts)
+    //   - setPhaseVoltage(voltage_limit, 0, _electricalAngle(shaft_angle, pole_pairs))
+    //   - НЕ использует PID_velocity и НЕ вызывает loopFOC
+    //
+    // needsAbsoluteZeroSearch() срабатывает по аппаратному индексу
+    // (обычно прерывание пина энкодера — не зависит от этого цикла)
   }
   voltage_q = 0;
   // disable motor
@@ -173,9 +177,7 @@ int BLDCMotor::absoluteZeroAlign() {
 
   // align absolute zero if it has been found
   if(!sensor->needsAbsoluteZeroSearch()){
-    // align the sensor with the absolute zero
     float zero_offset = sensor->initAbsoluteZero();
-    // remember zero electric angle
     zero_electric_angle = _normalizeAngle(_electricalAngle(zero_offset, pole_pairs));
   }
   // return bool if zero found
@@ -217,12 +219,7 @@ void BLDCMotor::move(float new_target) {
       // velocity set point
       // include velocity loop
       shaft_velocity_sp = target;
-      voltage_q = PID_velocity(-(shaft_velocity_sp - shaft_velocity));
-
-      shaft_angle = _normalizeAngle(shaftAngle());
-      // set the phase voltage - FOC heart function :)
-      eangle = _electricalAngle(shaft_angle,pole_pairs);
-      setPhaseVoltage(voltage_q, 0, eangle);
+      voltage_q = PID_velocity((shaft_velocity_sp - shaft_velocity));
       break;
     case ControlType::velocity_openloop:
       // velocity control in open loop
@@ -236,6 +233,14 @@ void BLDCMotor::move(float new_target) {
       shaft_angle_sp = target;
       angleOpenloop(shaft_angle_sp);
       break;
+    case ControlType::velocity_myLoop:
+    {
+    	shaft_velocity_sp = target;
+    	voltage_q = PID_velocity((shaft_velocity_sp - shaft_velocity));
+    	velocityOpenloop(voltage_q);
+    	break;
+    }
+
   }
 }
 

@@ -121,18 +121,18 @@ void sensors::init_chain()
 	id =2;
 	this->chain[id].bufAdr 	= this->raw_pitch_enc;
 	this->chain[id].busAdr 	= 0x30;
-	this->chain[id].regAdr 	= 0x20;
+	this->chain[id].regAdr 	= 0x21;
 	this->chain[id].dataSize = 4;
-	this->chain[id].period   = 1000/1000; // 100hz
+	this->chain[id].period   = 1000/1000; // 1000hz
 	this->chain[id].cnt		= 0;
 	this->chain[id].i2ctype  = ALT_I2C;
 
 	id =3;
 	this->chain[id].bufAdr 	= this->raw_yaw_enc;
 	this->chain[id].busAdr 	= 0x31;
-	this->chain[id].regAdr 	= 0x20;
+	this->chain[id].regAdr 	= 0x21;
 	this->chain[id].dataSize = 4;
-	this->chain[id].period   = 1000/1000; // 100hz
+	this->chain[id].period   = 1000/1000; // 1000hz
 	this->chain[id].cnt		= 0;
 	this->chain[id].i2ctype  = ALT_I2C;
 
@@ -150,7 +150,7 @@ void sensors::init_chain()
 	this->chain[id].busAdr 	= 0;
 	this->chain[id].regAdr 	= 0;
 	this->chain[id].dataSize = 0;
-	this->chain[id].period   = 1; // 0.5
+	this->chain[id].period   = 1000/1000;
 	this->chain[id].isExecute = true;
 	this->chain[id].cnt		= 0;
 	this->chain[id].i2ctype  = ALT_I2C;

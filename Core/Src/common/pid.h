@@ -34,7 +34,7 @@ public:
     float output_ramp; //!< Maximum speed of change of the output value
     float limit; //!< Maximum output value
 
-protected:
+public:
     float integral_prev; //!< last integral component value
     float error_prev; //!< last tracking error value
     unsigned long timestamp_prev; //!< Last execution timestamp

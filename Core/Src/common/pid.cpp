@@ -24,7 +24,7 @@ float PIDController::operator() (float error){
     unsigned long timestamp_now = _micros();
     float Ts = (timestamp_now - timestamp_prev) * 1e-6;
     // quick fix for strange cases (micros overflow)
-    if(Ts <= 0 || Ts > 0.5) Ts = 1e-3;
+    //if(Ts <= 0 || Ts > 0.5) Ts = 1e-3;
 
     // u(s) = (P + I/s + Ds)e(s)
     // Discrete implementations

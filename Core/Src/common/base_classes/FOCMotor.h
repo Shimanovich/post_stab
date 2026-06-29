@@ -21,7 +21,8 @@ enum ControlType{
   velocity,//!< Velocity motion control
   angle,//!< Position/angle motion control
   velocity_openloop,
-  angle_openloop
+  angle_openloop,
+  velocity_myLoop
 };
 
 /**

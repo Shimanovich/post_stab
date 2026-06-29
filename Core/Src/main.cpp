@@ -121,11 +121,13 @@ ByteFifo fifo(32);
 
 
 
-float az_spped = 0;
+float az_speed = 0;
 
 float el_speed = 0;
 
-
+float up_test_pos;
+float dw_test_pos;
+bool runtest;
 
 
 
@@ -257,13 +259,25 @@ void step_motor() {
 //
 //    }
 
+	motor0.sensor->update_syncVelocity();
+	motor1.sensor->update_syncVelocity();
 
-	float gxyz[3] = {0};
-    if (chainI2C.get_gyro_gimb(gxyz) > 0) {
-	  //motor1.loopFOC();
 
-	  motor1.move(el_speed);
-    }
+	float gxyz[3] = { 0 };
+	if (chainI2C.get_gyro_gimb(gxyz) > 0) {
+
+		motor1.move(el_speed);
+		if ((motor1.controller == ControlType::velocity)||(motor1.controller == ControlType::angle)) {
+			motor1.loopFOC();
+		}
+
+
+		motor0.move(az_speed);
+
+		if ((motor0.controller == ControlType::velocity)||(motor0.controller == ControlType::angle)) {
+			motor0.loopFOC();
+		}
+	}
 
 
 
@@ -282,7 +296,7 @@ void initMotor(void)
 
 
 		float vm = 14.0f;
-		float vl = 9.0f;
+		float vl = 6.0f;
 
 
 	    driverMot0.voltage_power_supply = vm;
@@ -291,6 +305,15 @@ void initMotor(void)
 	    motor0.voltage_limit = vl;
 	    motor0.velocity_limit = 30.1f;
 	    motor0.controller = ControlType::velocity;
+	    motor0.foc_modulation = FOCModulationType::SinePWM;
+
+	    motor0.PID_velocity.P = 0.0f;   // если используете режим velocity
+	    motor0.PID_velocity.I = 0.0f;
+	    motor0.PID_velocity.D = 0.0f;
+
+	    motor0.PID_velocity.output_ramp = 10000.0f;
+	    motor0.PID_velocity.limit = motor1.voltage_limit;
+
 
 	    driverMot1.voltage_power_supply = vm;
 	    driverMot1.voltage_limit = vl;
@@ -302,8 +325,10 @@ void initMotor(void)
 	    motor1.PID_velocity.P = 0.0f;   // если используете режим velocity
 	    motor1.PID_velocity.I = 0.0f;
 	    motor1.PID_velocity.D = 0.0f;
-	    motor1.PID_velocity.output_ramp = 1000.0f;
+	    motor1.LPF_velocity.Tf = 0.05f;
+	    motor1.PID_velocity.output_ramp = 10000.0f;
 	    motor1.PID_velocity.limit = motor1.voltage_limit;
+	    motor1.foc_modulation = FOCModulationType::SinePWM;
 
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
@@ -494,6 +519,47 @@ void I2C_Recover(I2C_HandleTypeDef *hi2c)
 
 
 
+void setMotorToCentres(BLDCMotor * thisMotor,float * target )
+{
+	ControlType old_t =thisMotor->controller;
+	FOCModulationType old_mod = thisMotor->foc_modulation;
+
+	thisMotor->foc_modulation= FOCModulationType::SinePWM;
+	thisMotor->controller = ControlType::velocity_openloop;
+
+
+	float oldangle;
+	*target = -1.0;
+	do
+	{
+		oldangle = thisMotor->sensor->getAngle();
+		HAL_Delay(100);
+	}
+	while(oldangle!=thisMotor->sensor->getAngle());
+
+	*target = 0.0;
+	HAL_Delay(100);
+	*target = 1.0;
+	uint32_t t_mov = HAL_GetTick();
+	HAL_Delay(500);
+	do
+	{
+		oldangle = thisMotor->sensor->getAngle();
+		HAL_Delay(100);
+
+	}
+	while(oldangle!=thisMotor->sensor->getAngle());
+	*target = 0;
+	t_mov = (HAL_GetTick() - t_mov)/2;
+	*target = -1.0;
+	HAL_Delay(t_mov);
+	*target = 0;
+
+	thisMotor->controller = old_t;
+	thisMotor->foc_modulation = old_mod;
+}
+
+
 
 void run_encoder_test()
 {
@@ -527,25 +593,43 @@ void run_encoder_test()
 
 
 
+
 	chainI2C.init_chain();
 	printf("Chain init\n\r");
 	initMotor();
 
 
 	// Привязываем обработчики к ключам
-	parser.registerHandler(0x0001, [](uint16_t key, uint32_t value) { az_spped = *(float*)&value;});
+	parser.registerHandler(0x0001, [](uint16_t key, uint32_t value) { az_speed = *(float*)&value;});
 	parser.registerHandler(0x0002, [](uint16_t key, uint32_t value) {  el_speed = *(float*)&value;});
 
 
-	parser.registerHandler(0x0003, [](uint16_t key, uint32_t value) {motor0.PID_velocity.P = *(float*)&value;});
-	parser.registerHandler(0x0004, [](uint16_t key, uint32_t value) {motor0.PID_velocity.I = *(float*)&value;});
-	parser.registerHandler(0x0005, [](uint16_t key, uint32_t value) {motor0.PID_velocity.D = *(float*)&value;});
+	parser.registerHandler(0x0013, [](uint16_t key, uint32_t value) {motor0.PID_velocity.P = *(float*)&value;});
+	parser.registerHandler(0x0014, [](uint16_t key, uint32_t value) {motor0.PID_velocity.I = *(float*)&value;});
+	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {motor0.PID_velocity.D = *(float*)&value;});
+	parser.registerHandler(0x0016, [](uint16_t key, uint32_t value) {motor0.LPF_velocity.Tf = *(float*)&value;});
+
+	parser.registerHandler(0x0023, [](uint16_t key, uint32_t value) {motor1.PID_velocity.P = *(float*)&value;});
+	parser.registerHandler(0x0024, [](uint16_t key, uint32_t value) {motor1.PID_velocity.I = *(float*)&value;});
+	parser.registerHandler(0x0025, [](uint16_t key, uint32_t value) {motor1.PID_velocity.D = *(float*)&value;});
+	parser.registerHandler(0x0026, [](uint16_t key, uint32_t value) {motor1.LPF_velocity.Tf = *(float*)&value;});
 
 
-	parser.registerHandler(0x0013, [](uint16_t key, uint32_t value) {motor1.PID_velocity.P = *(float*)&value;});
-	parser.registerHandler(0x0014, [](uint16_t key, uint32_t value) {motor1.PID_velocity.I = *(float*)&value;});
-	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {motor1.PID_velocity.D = *(float*)&value;});
 
+	parser.registerHandler(0x0030, [](uint16_t key, uint32_t value) { up_test_pos = pitchDma.getWrappedAngle(); });
+	parser.registerHandler(0x0031, [](uint16_t key, uint32_t value) { dw_test_pos = pitchDma.getWrappedAngle(); });
+
+	parser.registerHandler(0x0032, [](uint16_t key, uint32_t value) { runtest = true;   el_speed = 1.0f; });
+	parser.registerHandler(0x0033, [](uint16_t key, uint32_t value) { runtest = false;  el_speed = 0.0f; });
+
+
+
+
+//	parser.registerHandler(0x0013, [](uint16_t key, uint32_t value) {motor0.PID_velocity.P = *(float*)&value;});
+//	parser.registerHandler(0x0014, [](uint16_t key, uint32_t value) {motor0.PID_velocity.I = *(float*)&value;});
+//	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {motor0.PID_velocity.D = *(float*)&value;});
+//
+//	parser.registerHandler(0x0016, [](uint16_t key, uint32_t value) {motor0.LPF_velocity.Tf = *(float*)&value;});
 
 
 
@@ -553,40 +637,50 @@ void run_encoder_test()
 
 	// Опционально — обработчик всех неизвестных ключей
 	parser.setDefaultHandler([](uint16_t key, uint32_t value) {
-	    printf("Unknown key 0x%04X, value=%lu\n", key, value);
+		printf("Unknown key 0x%04X, value=%lu\n", key, value);
 	});
-
 
 	//HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 	HAL_UART_Receive_DMA(&huart1, uart_rx_dma_buffer, UART_RX_DMA_BUF_SIZE);
 
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
+
 	HAL_TIM_Base_Start_IT(&htim6);
 
-
-	//while(1)
-	//{
-
-		//start _motor
-	   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
+	HAL_Delay(1000);
+	setMotorToCentres(&motor0, &az_speed);
+	setMotorToCentres(&motor1, &el_speed);
 
 
-	   // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
-	//}
+
+	motor0.initFOC(NOT_SET);
+	motor1.initFOC(NOT_SET);
 
 
-	    float w;
+
+	printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
+
+	printf("motor1 elangle %f\n\r", motor1.zero_electric_angle);
 
 
-	    el_speed = -1.0;
-	    int dir =1;
-	    uint8_t b;
+	float w;
 
-	    uint32_t t_start = HAL_GetTick();
+	el_speed = 0.0;
+	int dir = 1;
+	uint8_t b;
+	uint32_t t_start = HAL_GetTick();
+
+
 
 	while(1)
 	{
 
-				if (chainI2C.overload>10)
+		if (fifo.pop(b))
+		{
+			parser.feed(b);
+		}
+
+				if (chainI2C.overload>1000)
 				{
 					printf(">ov:%d\n",chainI2C.overload);
 					chainI2C.overload=0;
@@ -594,6 +688,8 @@ void run_encoder_test()
 					I2C_Recover(&hi2c1);
 					HAL_TIM_Base_Start_IT(&htim6);
 				}
+
+
 
 					//printf(">px:%f\n",pitchEmulator.getAngle());
 
@@ -608,11 +704,16 @@ void run_encoder_test()
 					printf(">Ua:%f\n",motor1.Ua);
 					printf(">Ub:%f\n",motor1.Ub);
 					printf(">Uc:%f\n",motor1.Uc);
+					printf(">Ea:%f\n",motor1.eangle);
+
+					printf(">Ep:%f\n",motor1.PID_velocity.error_prev);
 
 
-//					chainI2C.get_gyro_gimb(&w);
-//					printf(">gp:%f\n",w);
+					chainI2C.get_gyro_gimb(&w);
+					printf(">gp:%f\n",w);
 //
+					printf(">zea:%f\n",motor1.zero_electric_angle);
+
 //					chainI2C.get_gyro_static(&w);
 //					printf(">ga:%f\n",w);
 //					printf(">s1:%f\n",gxyz[1]);
@@ -622,32 +723,47 @@ void run_encoder_test()
 //					printf(">Pv:%f\n",el_spped);
 
 
-					 float angle = fmodf(motor1.shaft_angle + M_PI, 2.0f * M_PI);
-					 if (angle < 0) angle += 2.0f * M_PI;
-				     angle -= M_PI;
 
-					if ((angle<-0.5)&&(dir==0))
-					{
-						dir = 1;
-						el_speed = +1.0;
-					}
+//					float angle = fmodf(motor0.shaft_angle + M_PI, 2.0f * M_PI);
+//					if (angle < 0) angle += 2.0f * M_PI;
+//				   angle -= M_PI;
 
-					if ((angle>1.25)&&(dir==1))
-					{
-						dir = 0;
-						el_speed = -1.0;
-					}
+//
+//					if ((angle < -0.5) && (dir == 0)) {
+//						dir = 1;
+//						az_speed = +1.0;
+//					}
+//
+//					if ((angle > 0.5) && (dir == 1)) {
+//						dir = 0;
+//						az_speed = -1.0;
+//					}
+//
+//					printf(">pp:%f\n",angle);
 
-					printf(">pp:%f\n",angle);
+
+					 float angle = pitchDma.getWrappedAngle();
+					 printf(">pp:%f\n",angle);
+
+		if (runtest) {
+			if ((angle > up_test_pos) && (dir == 1)) {
+				dir = 0;
+				el_speed = -1.0;
+			}
+
+			if ((angle < dw_test_pos) && (dir == 0)) {
+				dir = 1;
+				el_speed = +1.0;
+			}
+		}
 
 
-					if (fifo.pop(b))
-					{
-						parser.feed(b);
-					}
-//					HAL_UART_Receive(&huart1, &rx_byte, 1,1);
-//					commander.processIncomingChar(rx_byte);
-					//HAL_Delay(1);
+
+
+
+
+
+
 
 	}
 

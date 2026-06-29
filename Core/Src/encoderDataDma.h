@@ -19,6 +19,8 @@
  * - Сохранена совместимость с zero_offset и natural_direction.
  */
 
+
+#define POS_ARRAY_SIZE 16
 class dataDma : public Sensor
 {
 public:
@@ -40,10 +42,16 @@ private:
     bool     first_velocity = true;
 
 public:
+
+    uint16_t anglesArray[POS_ARRAY_SIZE];
+    uint32_t ar_index;
+
     void begin(uint8_t* enc_ptr, uint8_t* gyro_ptr)
     {
         encDataPtr  = enc_ptr;
         gyroDataPtr = gyro_ptr;
+
+        ar_index = 0;
     }
 
     // ==================== ОСНОВНЫЕ МЕТОДЫ ДЛЯ SimpleFOC ====================
@@ -76,7 +84,7 @@ public:
         accumulated_angle += natural_direction * (delta_raw * 2.0f * M_PI / 4096.0f);
         prev_raw_pos = current_raw;
 
-        return accumulated_angle - zero_offset;
+        return (accumulated_angle - zero_offset);
     }
 
     /**
@@ -99,37 +107,83 @@ public:
      */
     float getVelocity() override
     {
+//        if (!encDataPtr) return 0.0f;
+//
+//        uint16_t current_raw = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
+//        uint32_t now = HAL_GetTick();
+//
+//        if (first_velocity)
+//        {
+//            prev_raw_for_vel = current_raw;
+//            last_update_tick = now;
+//            first_velocity = false;
+//            return 0.0f;
+//        }
+//
+//        uint32_t dt_ms = now - last_update_tick;
+//        if (dt_ms == 0) dt_ms = 1;                    // защита от деления на ноль
+//
+//        float dt = dt_ms / 1000.0f;                   // секунды
+//
+//        // Дельта raw с правильной обработкой переполнения
+//        int32_t delta_raw = (int32_t)current_raw - prev_raw_for_vel;
+//        if (delta_raw >  2048) delta_raw -= 4096;
+//        if (delta_raw < -2048) delta_raw += 4096;
+//
+//        float delta_angle = natural_direction * (delta_raw * 2.0f * M_PI / 4096.0f);
+//        float velocity = delta_angle / dt;
+//
+//        prev_raw_for_vel = current_raw;
+//        last_update_tick = now;
+//
+//        return velocity;
+
+
         if (!encDataPtr) return 0.0f;
 
-        uint16_t current_raw = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
-        uint32_t now = HAL_GetTick();
+//        uint16_t current_raw = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
+//        uint32_t now = HAL_GetTick();
 
-        if (first_velocity)
+        if (ar_index < POS_ARRAY_SIZE)
         {
-            prev_raw_for_vel = current_raw;
-            last_update_tick = now;
+            prev_raw_for_vel = 0;
             first_velocity = false;
             return 0.0f;
         }
 
-        uint32_t dt_ms = now - last_update_tick;
-        if (dt_ms == 0) dt_ms = 1;                    // защита от деления на ноль
 
-        float dt = dt_ms / 1000.0f;                   // секунды
+        uint32_t total_dist = 0;
 
-        // Дельта raw с правильной обработкой переполнения
-        int32_t delta_raw = (int32_t)current_raw - prev_raw_for_vel;
-        if (delta_raw >  2048) delta_raw -= 4096;
-        if (delta_raw < -2048) delta_raw += 4096;
+        int intervals = POS_ARRAY_SIZE - 1;
 
-        float delta_angle = natural_direction * (delta_raw * 2.0f * M_PI / 4096.0f);
-        float velocity = delta_angle / dt;
+        for (int i = 0; i < intervals; i++) {
+			int idx1 = (ar_index + i) % POS_ARRAY_SIZE;
+			int idx2 = (ar_index + i + 1) % POS_ARRAY_SIZE;
 
-        prev_raw_for_vel = current_raw;
-        last_update_tick = now;
+			int32_t delta_raw = anglesArray[idx2] - anglesArray[idx1];
+				if (delta_raw >  2048) delta_raw -= 4096;
+				if (delta_raw < -2048) delta_raw += 4096;
+
+			total_dist += abs(delta_raw);
+		}
+
+        float middle_speed_raw = (float)total_dist /((float)intervals);  // steps/ms
+
+
+
+
+        float velocity = natural_direction * (middle_speed_raw * 2.0f * M_PI / 4096.0f)*1000.0; // rad/sec
 
         return velocity;
+
     }
+
+    void update_syncVelocity() override
+    {
+    	anglesArray[ar_index%POS_ARRAY_SIZE] = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
+    	ar_index++;
+    }
+
 
     // ==================== ИНИЦИАЛИЗАЦИЯ НУЛЯ ====================
 

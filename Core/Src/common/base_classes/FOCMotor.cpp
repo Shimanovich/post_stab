@@ -18,15 +18,15 @@ FOCMotor::FOCMotor()
   // index search velocity
   velocity_index_search = DEF_INDEX_SEARCH_TARGET_VELOCITY;
   // sensor and motor align voltage
-  voltage_sensor_align = DEF_VOLTAGE_SENSOR_ALIGN;
+  voltage_sensor_align = DEF_VOLTAGE_SENSOR_ALIGN+2;
 
   // electric angle of the zero angle
   zero_electric_angle = 0;
 
   // default modulation is SinePWM
-  //foc_modulation = FOCModulationType::SpaceVectorPWM;
-
   foc_modulation = FOCModulationType::SinePWM;
+
+  //foc_modulation = FOCModulationType::SpaceVectorPWM;
 
   // default target value
   target = 0;
