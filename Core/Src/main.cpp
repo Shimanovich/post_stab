@@ -305,11 +305,12 @@ void initMotor(void)
 	    motor0.voltage_limit = vl;
 	    motor0.velocity_limit = 30.1f;
 	    motor0.controller = ControlType::velocity;
-	    motor0.foc_modulation = FOCModulationType::SinePWM;
+	    motor0.foc_modulation = FOCModulationType::SpaceVectorPWM;
 
-	    motor0.PID_velocity.P = 0.0f;   // если используете режим velocity
-	    motor0.PID_velocity.I = 0.0f;
-	    motor0.PID_velocity.D = 0.0f;
+//	    motor0.PID_velocity.P = 0.5f;
+//	    motor0.PID_velocity.I = 10.0f;
+//	    motor0.PID_velocity.D = 0.0f;
+//	    motor0.LPF_velocity.Tf = 0.05f;
 
 	    motor0.PID_velocity.output_ramp = 10000.0f;
 	    motor0.PID_velocity.limit = motor1.voltage_limit;
@@ -322,13 +323,13 @@ void initMotor(void)
 	    motor1.velocity_limit = 30.0f;
 	    motor1.controller = ControlType::velocity;
 
-	    motor1.PID_velocity.P = 0.0f;   // если используете режим velocity
-	    motor1.PID_velocity.I = 0.0f;
-	    motor1.PID_velocity.D = 0.0f;
-	    motor1.LPF_velocity.Tf = 0.05f;
+//	    motor1.PID_velocity.P = 0.5f;
+//	    motor1.PID_velocity.I = 10.0f;
+//	    motor1.PID_velocity.D = 0.0f;
+//	    motor1.LPF_velocity.Tf = 0.05f;
 	    motor1.PID_velocity.output_ramp = 10000.0f;
 	    motor1.PID_velocity.limit = motor1.voltage_limit;
-	    motor1.foc_modulation = FOCModulationType::SinePWM;
+	    motor1.foc_modulation = FOCModulationType::SpaceVectorPWM;
 
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
@@ -656,7 +657,8 @@ void run_encoder_test()
 	motor0.initFOC(NOT_SET);
 	motor1.initFOC(NOT_SET);
 
-
+//	motor0.zero_electric_angle = M_PI/2.0;
+//	motor1.zero_electric_angle = M_PI/2.0;
 
 	printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
 

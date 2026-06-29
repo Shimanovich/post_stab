@@ -154,22 +154,18 @@ int BLDCMotor::alignSensor() {
 
 // Encoder alignment the absolute zero angle
 // - to the index
-// ИЗМЕНЕНО: поиск теперь в OPEN LOOP режиме (НЕ требует настроенного PID_velocity)
 int BLDCMotor::absoluteZeroAlign() {
-  // if no absolute zero return
+
+//  if(monitor_port) monitor_port->println("MOT: Absolute zero align.");
+    // if no absolute zero return
   if(!sensor->hasAbsoluteZero()) return 0;
 
-  // search the absolute zero with small velocity - OPEN LOOP
-  // Вращаем мотор open-loop до нахождения индекса или ~1 механического оборота
+
+//  if(monitor_port && sensor->needsAbsoluteZeroSearch()) monitor_port->println("MOT: Searching...");
+  // search the absolute zero with small velocity
   while(sensor->needsAbsoluteZeroSearch() && shaft_angle < _2PI){
-    velocityOpenloop(velocity_index_search);
-    // velocityOpenloop делает:
-    //   - shaft_angle = _normalizeAngle(shaft_angle + target_velocity * Ts)
-    //   - setPhaseVoltage(voltage_limit, 0, _electricalAngle(shaft_angle, pole_pairs))
-    //   - НЕ использует PID_velocity и НЕ вызывает loopFOC
-    //
-    // needsAbsoluteZeroSearch() срабатывает по аппаратному индексу
-    // (обычно прерывание пина энкодера — не зависит от этого цикла)
+    loopFOC();
+    voltage_q = PID_velocity(velocity_index_search - shaftVelocity());
   }
   voltage_q = 0;
   // disable motor
@@ -177,7 +173,9 @@ int BLDCMotor::absoluteZeroAlign() {
 
   // align absolute zero if it has been found
   if(!sensor->needsAbsoluteZeroSearch()){
+    // align the sensor with the absolute zero
     float zero_offset = sensor->initAbsoluteZero();
+    // remember zero electric angle
     zero_electric_angle = _normalizeAngle(_electricalAngle(zero_offset, pole_pairs));
   }
   // return bool if zero found
