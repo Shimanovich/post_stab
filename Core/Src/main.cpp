@@ -307,10 +307,11 @@ void initMotor(void)
 	    motor0.controller = ControlType::velocity;
 	    motor0.foc_modulation = FOCModulationType::SpaceVectorPWM;
 
-//	    motor0.PID_velocity.P = 0.5f;
-//	    motor0.PID_velocity.I = 10.0f;
-//	    motor0.PID_velocity.D = 0.0f;
-//	    motor0.LPF_velocity.Tf = 0.05f;
+	    motor0.PID_velocity.P = 0.0f;
+	    motor0.PID_velocity.I = 0.0f;
+	    motor0.PID_velocity.D = 0.0f;
+
+	    motor0.LPF_velocity.Tf = 0.05f;
 
 	    motor0.PID_velocity.output_ramp = 10000.0f;
 	    motor0.PID_velocity.limit = motor1.voltage_limit;
@@ -323,10 +324,12 @@ void initMotor(void)
 	    motor1.velocity_limit = 30.0f;
 	    motor1.controller = ControlType::velocity;
 
-//	    motor1.PID_velocity.P = 0.5f;
-//	    motor1.PID_velocity.I = 10.0f;
-//	    motor1.PID_velocity.D = 0.0f;
-//	    motor1.LPF_velocity.Tf = 0.05f;
+	    motor1.PID_velocity.P = 0.0f;
+	    motor1.PID_velocity.I = 0.0f;
+	    motor1.PID_velocity.D = 0.0f;
+
+
+	    motor1.LPF_velocity.Tf = 0.05f;
 	    motor1.PID_velocity.output_ramp = 10000.0f;
 	    motor1.PID_velocity.limit = motor1.voltage_limit;
 	    motor1.foc_modulation = FOCModulationType::SpaceVectorPWM;

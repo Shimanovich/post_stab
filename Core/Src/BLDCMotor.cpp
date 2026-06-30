@@ -96,6 +96,8 @@ int  BLDCMotor::initFOC( float zero_electric_offset, Direction sensor_direction 
     // set the sensor direction - default CW
     sensor->natural_direction = sensor_direction;
   }else{
+
+	zero_electric_angle = 0;
     // sensor and motor alignment
     _delay(500);
     exit_flag = alignSensor();
@@ -107,48 +109,30 @@ int  BLDCMotor::initFOC( float zero_electric_offset, Direction sensor_direction 
 }
 // Encoder alignment to electrical 0 angle
 int BLDCMotor::alignSensor() {
-//  if(monitor_port) monitor_port->println("MOT: Align sensor.");
-  // align the electrical phases of the motor and sensor
-  // set angle -90 degrees
+    // === 1. Гарантируем, что первое чтение уже произошло ===
+    // Это нужно, чтобы if (first_angle) не сработал во время alignment
 
-  float start_angle = shaftAngle();
-  for (int i = 0; i <=5; i++ ) {
-    float angle = _3PI_2 + _2PI * i / 6.0;
-    setPhaseVoltage(voltage_sensor_align, 0,  angle);
-    _delay(400);
-  }
-  float mid_angle = shaftAngle();
-  for (int i = 5; i >=0; i-- ) {
-    float angle = _3PI_2 + _2PI * i / 6.0;
-    setPhaseVoltage(voltage_sensor_align, 0,  angle);
-    _delay(200);
-  }
-  if (mid_angle < start_angle) {
-//    if(monitor_port) monitor_port->println("MOT: natural_direction==CCW");
-    sensor->natural_direction = Direction::CCW;
-  } else if (mid_angle == start_angle) {
-//    if(monitor_port) monitor_port->println("MOT: Sensor failed to notice movement");
-  } else{
-//    if(monitor_port) monitor_port->println("MOT: natural_direction==CW");
-  }
 
-  // let the motor stabilize for 2 sec
-  _delay(2000);
-  // set sensor to zero
-  sensor->initRelativeZero();
-  _delay(500);
-  setPhaseVoltage(0, 0, 0);
-  _delay(200);
 
-  // find the index if available
-  int exit_flag = absoluteZeroAlign();
-  _delay(500);
-//  if(monitor_port){
-//    if(exit_flag< 0 ) monitor_port->println("MOT: Error: Not found!");
-//    if(exit_flag> 0 ) monitor_port->println("MOT: Success!");
-//    else  monitor_port->println("MOT: Not available!");
-//  }
-  return exit_flag;
+    // === 2. Выравниваем ротор ===
+    setPhaseVoltage(voltage_sensor_align, 0, _3PI_2);
+    _delay(1500);                    // время на поворот и остановку
+
+    // === 3. Читаем текущее положение (теперь first_angle уже false) ===
+    float current_angle = shaftAngle();
+
+    // === 4. Устанавливаем электрический ноль ===
+    zero_electric_angle = _normalizeAngle( _electricalAngle( current_angle, pole_pairs ));
+
+    // === 5. Обнуляем механический ноль энкодера ===
+    // calibrateZero(true) — записывает текущую позицию как ноль в регистр AM4096
+    sensor->initAbsoluteZero();
+
+
+    _delay(100);
+    setPhaseVoltage(0, 0, 0);
+
+    return 1;
 }
 
 

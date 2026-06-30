@@ -50,7 +50,6 @@ public:
     {
         encDataPtr  = enc_ptr;
         gyroDataPtr = gyro_ptr;
-
         ar_index = 0;
     }
 
@@ -73,17 +72,15 @@ public:
             first_angle = false;
             return accumulated_angle - zero_offset;
         }
-
         // Вычисляем дельту с учётом переполнения 12-битного энкодера
-        int32_t delta_raw = (int32_t)current_raw - prev_raw_pos;
+        int32_t delta_raw = (int32_t)current_raw;// - prev_raw_pos;
 
         if (delta_raw >  2048) delta_raw -= 4096;
         if (delta_raw < -2048) delta_raw += 4096;
 
         // Накапливаем непрерывный угол
         accumulated_angle += natural_direction * (delta_raw * 2.0f * M_PI / 4096.0f);
-        prev_raw_pos = current_raw;
-
+        //prev_raw_pos = current_raw;
         return (accumulated_angle - zero_offset);
     }
 
@@ -93,9 +90,8 @@ public:
      */
     float getWrappedAngle()
     {
-        float angle = getAngle();                    // берём непрерывный
+        float angle = getAngle();
         const float PI = M_PI;
-
         angle = fmodf(angle + PI, 2.0f * PI);
         if (angle < 0) angle += 2.0f * PI;
         return angle - PI;
@@ -119,7 +115,6 @@ public:
 //            first_velocity = false;
 //            return 0.0f;
 //        }
-//
 //        uint32_t dt_ms = now - last_update_tick;
 //        if (dt_ms == 0) dt_ms = 1;                    // защита от деления на ноль
 //
@@ -135,7 +130,6 @@ public:
 //
 //        prev_raw_for_vel = current_raw;
 //        last_update_tick = now;
-//
 //        return velocity;
 
 
@@ -168,10 +162,6 @@ public:
 		}
 
         float middle_speed_raw = (float)total_dist /((float)intervals);  // steps/ms
-
-
-
-
         float velocity = natural_direction * (middle_speed_raw * 2.0f * M_PI / 4096.0f)*1000.0; // rad/sec
 
         return velocity;
