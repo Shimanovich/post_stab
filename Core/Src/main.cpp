@@ -305,7 +305,7 @@ void initMotor(void)
 	    motor0.voltage_limit = vl;
 	    motor0.velocity_limit = 30.1f;
 	    motor0.controller = ControlType::velocity;
-	    motor0.foc_modulation = FOCModulationType::SpaceVectorPWM;
+	    motor0.foc_modulation = FOCModulationType::SinePWM;
 
 	    motor0.PID_velocity.P = 0.0f;
 	    motor0.PID_velocity.I = 0.0f;
@@ -332,7 +332,7 @@ void initMotor(void)
 	    motor1.LPF_velocity.Tf = 0.05f;
 	    motor1.PID_velocity.output_ramp = 10000.0f;
 	    motor1.PID_velocity.limit = motor1.voltage_limit;
-	    motor1.foc_modulation = FOCModulationType::SpaceVectorPWM;
+	    motor1.foc_modulation = FOCModulationType::SinePWM;
 
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
