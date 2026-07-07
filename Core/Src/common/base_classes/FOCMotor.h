@@ -17,6 +17,7 @@
  *  Motion control type
  */
 enum ControlType{
+  none,
   voltage,//!< Torque control using voltage
   velocity,//!< Velocity motion control
   angle,//!< Position/angle motion control

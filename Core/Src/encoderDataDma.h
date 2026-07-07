@@ -21,6 +21,9 @@
 
 
 #define POS_ARRAY_SIZE 16
+
+#define INTERVALS (POS_ARRAY_SIZE - 1)
+
 class dataDma : public Sensor
 {
 public:
@@ -30,6 +33,8 @@ public:
 private:
     uint8_t* encDataPtr = nullptr;
     uint8_t* gyroDataPtr = nullptr;
+
+    float velocity =0.0;
 
     // Для непрерывного угла (unwrap)
     uint16_t prev_raw_pos = 0;
@@ -43,7 +48,18 @@ private:
 
 public:
 
+    void  copysave(void * dst, const void *src, size_t sz)
+    {
+    	do{
+    		memcpy(dst,src,sz);
+    	}
+    	while(memcmp(dst,src,sz)!=0);
+
+    }
+
     uint16_t anglesArray[POS_ARRAY_SIZE];
+    uint16_t anglesArray_mirror[POS_ARRAY_SIZE];
+
     uint32_t ar_index;
 
     void begin(uint8_t* enc_ptr, uint8_t* gyro_ptr)
@@ -61,41 +77,41 @@ public:
      */
     float getAngle() override
     {
-        if (!encDataPtr) return 0.0f;
+		if (!encDataPtr)
+			return 0.0f;
+		uint16_t current_raw = (uint16_t) (encDataPtr[0] << 8) | encDataPtr[1];
+		if (first_angle) {
+			prev_raw_pos = current_raw;
+			accumulated_angle = natural_direction
+					* ((float) current_raw * 2.0f * M_PI / 4096.0f);
+			first_angle = false;
+			return accumulated_angle - zero_offset;
+		}
 
-        uint16_t current_raw = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
+		// Правильная дельта для unwrap (абсолютный энкодер)
+		int32_t delta_raw = (int32_t) current_raw - prev_raw_pos;
+		if (delta_raw > 2048)
+			delta_raw -= 4096;
+		if (delta_raw < -2048)
+			delta_raw += 4096;
 
-        if (first_angle)
-        {
-            prev_raw_pos     = current_raw;
-            accumulated_angle = natural_direction * ((float)current_raw * 2.0f * M_PI / 4096.0f);
-            first_angle = false;
-            return accumulated_angle - zero_offset;
-        }
-        // Вычисляем дельту с учётом переполнения 12-битного энкодера
-        int32_t delta_raw = (int32_t)current_raw;// - prev_raw_pos;
+		accumulated_angle += natural_direction
+				* (delta_raw * 2.0f * M_PI / 4096.0f);
+		prev_raw_pos = current_raw;
 
-        if (delta_raw >  2048) delta_raw -= 4096;
-        if (delta_raw < -2048) delta_raw += 4096;
+		accumulated_angle = natural_direction
+				* ((float) current_raw * 2.0f * M_PI / 4096.0f);
+		// return (accumulated_angle - zero_offset);
 
-        // Накапливаем непрерывный угол
-        accumulated_angle += natural_direction * (delta_raw * 2.0f * M_PI / 4096.0f);
-        //prev_raw_pos = current_raw;
-        return (accumulated_angle - zero_offset);
+		float angle = accumulated_angle - zero_offset;
+		const float PI = M_PI;
+		angle = fmodf(angle + PI, 2.0f * PI);
+		if (angle < 0)
+			angle += 2.0f * PI;
+		return angle - PI;
     }
 
-    /**
-     * Возвращает угол, обёрнутый в [-π, π] (если кому-то очень нужно для внешних нужд).
-     * В большинстве случаев лучше использовать getAngle() — непрерывный.
-     */
-    float getWrappedAngle()
-    {
-        float angle = getAngle();
-        const float PI = M_PI;
-        angle = fmodf(angle + PI, 2.0f * PI);
-        if (angle < 0) angle += 2.0f * PI;
-        return angle - PI;
-    }
+
 
     /**
      * Скорость вычисляется по raw-разнице (без использования обёрнутого угла).
@@ -103,98 +119,76 @@ public:
      */
     float getVelocity() override
     {
-//        if (!encDataPtr) return 0.0f;
-//
-//        uint16_t current_raw = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
-//        uint32_t now = HAL_GetTick();
-//
-//        if (first_velocity)
-//        {
-//            prev_raw_for_vel = current_raw;
-//            last_update_tick = now;
-//            first_velocity = false;
-//            return 0.0f;
-//        }
-//        uint32_t dt_ms = now - last_update_tick;
-//        if (dt_ms == 0) dt_ms = 1;                    // защита от деления на ноль
-//
-//        float dt = dt_ms / 1000.0f;                   // секунды
-//
-//        // Дельта raw с правильной обработкой переполнения
-//        int32_t delta_raw = (int32_t)current_raw - prev_raw_for_vel;
-//        if (delta_raw >  2048) delta_raw -= 4096;
-//        if (delta_raw < -2048) delta_raw += 4096;
-//
-//        float delta_angle = natural_direction * (delta_raw * 2.0f * M_PI / 4096.0f);
-//        float velocity = delta_angle / dt;
-//
-//        prev_raw_for_vel = current_raw;
-//        last_update_tick = now;
-//        return velocity;
-
-
         if (!encDataPtr) return 0.0f;
-
-//        uint16_t current_raw = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
-//        uint32_t now = HAL_GetTick();
 
         if (ar_index < POS_ARRAY_SIZE)
         {
-            prev_raw_for_vel = 0;
-            first_velocity = false;
-            return 0.0f;
+            return 0.0f;   // ещё не набрали достаточно отсчётов
         }
 
 
-        uint32_t total_dist = 0;
+        int32_t total_dist = 0;
+       		for (int i = 0; i < INTERVALS; i++) {
+       			int idx1 = (ar_index + i) % POS_ARRAY_SIZE;
+       			int idx2 = (ar_index + i + 1) % POS_ARRAY_SIZE;
 
-        int intervals = POS_ARRAY_SIZE - 1;
+       			int angle1 = ((int32_t) anglesArray[idx1] + 2048) % 4096;
+       			if (angle1 < 0)
+       				angle1 += 4096;
+       			angle1 -= 4096;
 
-        for (int i = 0; i < intervals; i++) {
-			int idx1 = (ar_index + i) % POS_ARRAY_SIZE;
-			int idx2 = (ar_index + i + 1) % POS_ARRAY_SIZE;
+       			int angle2 = ((int32_t) anglesArray[idx2] + 2048) % 4096;
+       			if (angle2 < 0)
+       				angle2 += 4096;
+       			angle2 -= 4096;
 
-			int32_t delta_raw = anglesArray[idx2] - anglesArray[idx1];
-				if (delta_raw >  2048) delta_raw -= 4096;
-				if (delta_raw < -2048) delta_raw += 4096;
+       			int32_t delta_raw = (int32_t) angle2 - (int32_t) angle1;
+       			total_dist += (delta_raw);
+       		}
 
-			total_dist += abs(delta_raw);
-		}
-
-        float middle_speed_raw = (float)total_dist /((float)intervals);  // steps/ms
-        float velocity = natural_direction * (middle_speed_raw * 2.0f * M_PI / 4096.0f)*1000.0; // rad/sec
+       		float middle_speed_raw = (float) total_dist / INTERVALS;
+       		float velocity = natural_direction * (middle_speed_raw * 2.0f * M_PI / 4096.0f) * 1000.0f;
 
         return velocity;
-
     }
 
     void update_syncVelocity() override
     {
-    	anglesArray[ar_index%POS_ARRAY_SIZE] = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
-    	ar_index++;
+        if (encDataPtr)
+        {
+            anglesArray[ar_index % POS_ARRAY_SIZE] = ((uint16_t)(encDataPtr[0] << 8) | encDataPtr[1])&0x0fff;
+            ar_index++;
+        }
+
+//        if (ar_index < POS_ARRAY_SIZE)
+//        {
+//            velocity =0.0f;
+//            return;
+//        }
+
+
+
+
+
     }
 
 
     // ==================== ИНИЦИАЛИЗАЦИЯ НУЛЯ ====================
 
-    float initRelativeZero() override
-    {
-        return initAbsoluteZero();
-    }
+    float initRelativeZero() override { return initAbsoluteZero(); }
 
     float initAbsoluteZero() override
     {
         if (!encDataPtr) return 0.0f;
 
         uint16_t pos = (uint16_t)(encDataPtr[0] << 8) | encDataPtr[1];
-        float current_rad = (pos * 2.0f * M_PI) / 4096.0f;
+        float current_rad = natural_direction * ((float)pos * 2.0f * M_PI / 4096.0f);
 
         float diff = current_rad - zero_offset;
         zero_offset = current_rad;
-
-        // Сбрасываем накопленный угол, чтобы новый ноль стал началом
         accumulated_angle = current_rad;
         prev_raw_pos = pos;
+        first_angle = false;
 
         return diff;
     }

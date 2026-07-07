@@ -15,6 +15,8 @@
 #include "../src/common/time_utils.h"
 #include "../src/common/defaults.h"
 
+#include "cmath"
+
 /**
  BLDC motor class
 */
@@ -48,6 +50,8 @@ class BLDCMotor: public FOCMotor
     /** Motor enable function */
     void enable() override;
 
+
+
     /**
      * Function initializing FOC algorithm
      * and aligning sensor's and motors' zero position
@@ -74,6 +78,9 @@ class BLDCMotor: public FOCMotor
     float Ua,Ub,Uc;//!< Current phase voltages Ua,Ub and Uc set to motor
     float Ualpha,Ubeta; //!< Phase voltages U alpha and U beta used for inverse Park and Clarke transform
 
+    void calibrateZeroOpenLoop(float speed_rads, uint32_t duration_ms) ;
+
+    int absoluteZeroAlign();
 
   private:
     // FOC methods
@@ -86,10 +93,13 @@ class BLDCMotor: public FOCMotor
     * @param angle_el current electrical angle of the motor
     */
     void setPhaseVoltage(float Uq, float Ud, float angle_el);
+
     /** Sensor alignment to electrical 0 angle of the motor */
     int alignSensor();
+
+
     /** Motor and sensor alignment to the sensors absolute 0 angle  */
-    int absoluteZeroAlign();
+
 
 
     // Open loop motion control

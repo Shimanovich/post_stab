@@ -39,7 +39,12 @@
 #include "bytefifo.h"
 #include "encoderDataDma.h"
 #include "LADRC_SpeedController.h"
+
+#include "settings_manager.h"
+
 #include <cmath>
+
+
 
 #define FILTER_AHRS_ENABLED
 #include "filter_ahrs.h"
@@ -109,6 +114,8 @@ AM4096 		yaw_encoder;
 dataDma    pitchDma;
 dataDma    yawDma;
 
+SettingsManager   settings;
+
 ICM20602  	frameImu;
 ICM20602  	baseImu;
 static filter_ctx_t  filter_ctx;
@@ -119,15 +126,19 @@ UartProtocolParser parser;
 
 ByteFifo fifo(32);
 
-
-
 float az_speed = 0;
-
 float el_speed = 0;
+
+
+bool Need_to_calibrate = false;
 
 float up_test_pos;
 float dw_test_pos;
-bool runtest;
+float left_test_pos;
+float right_test_pos;
+
+
+bool runtest_el, runtest_az;
 
 
 
@@ -250,30 +261,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 
 void step_motor() {
-
-//        float desiredRelSpeed = stabilizationPID( el_speed - gxyz[0] );   // только outer
-//        motor1.loopFOC();
-//        motor1.move( -desiredRelSpeed );   // библиотека сама закроет velocity loop
-//
-//
-//
-//    }
-
 	motor0.sensor->update_syncVelocity();
 	motor1.sensor->update_syncVelocity();
 
-
 	float gxyz[3] = { 0 };
 	if (chainI2C.get_gyro_gimb(gxyz) > 0) {
-
 		motor1.move(el_speed);
 		if ((motor1.controller == ControlType::velocity)||(motor1.controller == ControlType::angle)) {
 			motor1.loopFOC();
 		}
 
-
 		motor0.move(az_speed);
-
 		if ((motor0.controller == ControlType::velocity)||(motor0.controller == ControlType::angle)) {
 			motor0.loopFOC();
 		}
@@ -292,47 +290,48 @@ void step_motor() {
 
 void initMotor(void)
 {
-	// === НАСТРОЙКИ ДЛЯ DC-2813C + 7 В ===
-
 
 		float vm = 14.0f;
-		float vl = 6.0f;
 
-
+		// settings for drive 0 (Azimuth engine)
 	    driverMot0.voltage_power_supply = vm;
-	    driverMot0.voltage_limit = vl;
+	    driverMot0.voltage_limit = settings.get().azMotor_Voltage_limit;
 	    motor0.pole_pairs = 7;
-	    motor0.voltage_limit = vl;
-	    motor0.velocity_limit = 30.1f;
+	    motor0.voltage_limit = settings.get().azMotor_Voltage_limit;
+	    motor0.velocity_limit = settings.get().azMotor_velocity_limit;
 	    motor0.controller = ControlType::velocity;
 	    motor0.foc_modulation = FOCModulationType::SinePWM;
 
-	    motor0.PID_velocity.P = 0.0f;
-	    motor0.PID_velocity.I = 0.0f;
-	    motor0.PID_velocity.D = 0.0f;
+	    motor0.PID_velocity.P = settings.get().azMotor_Pid_velocity_P;
+	    motor0.PID_velocity.I = settings.get().azMotor_Pid_velocity_I;
+	    motor0.PID_velocity.D = settings.get().azMotor_Pid_velocity_D;
+	    motor0.LPF_velocity.Tf = settings.get().azMotor_LPF_velocity_TF;
 
-	    motor0.LPF_velocity.Tf = 0.05f;
+	    motor0.PID_velocity.output_ramp = 10000.0f; // ??
+	    motor0.PID_velocity.limit = settings.get().azMotor_velocity_limit;
+	    motor0.voltage_sensor_align = settings.get().azMotor_Voltage_limit;
 
-	    motor0.PID_velocity.output_ramp = 10000.0f;
-	    motor0.PID_velocity.limit = motor1.voltage_limit;
+///////////////////////////////////////////////////////////
 
-
+		// settings for drive 1 (Pitch engine)
 	    driverMot1.voltage_power_supply = vm;
-	    driverMot1.voltage_limit = vl;
+	    driverMot1.voltage_limit = settings.get().elMotor_Voltage_limit;
 	    motor1.pole_pairs = 7;
-	    motor1.voltage_limit = vl;
+	    motor1.voltage_limit = settings.get().elMotor_Voltage_limit;;
 	    motor1.velocity_limit = 30.0f;
 	    motor1.controller = ControlType::velocity;
-
-	    motor1.PID_velocity.P = 0.0f;
-	    motor1.PID_velocity.I = 0.0f;
-	    motor1.PID_velocity.D = 0.0f;
-
-
-	    motor1.LPF_velocity.Tf = 0.05f;
 	    motor1.PID_velocity.output_ramp = 10000.0f;
-	    motor1.PID_velocity.limit = motor1.voltage_limit;
+	    motor1.PID_velocity.limit = settings.get().elMotor_velocity_limit;
 	    motor1.foc_modulation = FOCModulationType::SinePWM;
+
+
+	    motor1.PID_velocity.P = settings.get().elMotor_Pid_velocity_P;
+	    motor1.PID_velocity.I = settings.get().elMotor_Pid_velocity_I;
+	    motor1.PID_velocity.D = settings.get().elMotor_Pid_velocity_D;
+	    motor1.LPF_velocity.Tf = settings.get().elMotor_LPF_velocity_TF;
+	    motor1.voltage_sensor_align = settings.get().elMotor_Voltage_limit;
+////////////////////////////////////////////////////////////////
+
 
 	    driverMot0.init();
 	    motor0.linkDriver(&driverMot0);
@@ -345,61 +344,17 @@ void initMotor(void)
 	    motor1.sensor = &pitchDma;
 
 
-
 	    motor0.enable();
 	    motor1.enable();
-	    printf("Wait\n\r");
-	    printf("start\n\r");
 
+	    printf("init  Motor Done\n\r");
 
-	    Filter_Init(&filter_ctx, "AHRS");
-	    filter_ctx.mode = 5;
+//	    Filter_Init(&filter_ctx, "AHRS");
+//	    filter_ctx.mode = 5;
 
 
 }
 
-//	    //HAL_Delay(2000);
-//
-//
-//	    uint32_t start_tick = HAL_GetTick();
-//	    uint32_t circle_tick = HAL_GetTick();
-//
-//	    speed = 0.1;
-//
-//	    int movcnt = 0;
-//    	float gxyz[3];
-//
-//	    while((HAL_GetTick() - start_tick)<10000 )
-//	    {
-//
-//
-//	    	if (chainI2C.get_gyro(gxyz)>10)
-//	    	{
-//	    		printf(">gx:%f\n",gxyz[0]);
-//	    		printf(">fx:%f\n",gyro_filter(gxyz[0]));
-//	    	}
-//	    	else
-//	    	{
-//	    		printf("wait imu\n\r");
-//
-//	    	}
-//
-//	    	//HAL_Delay(1);
-//
-//	    	movcnt++;
-//
-//	    }
-//
-//	    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
-//
-//	    HAL_TIM_Base_Stop(&htim6);
-//
-//	    while(1)
-//	    {
-//
-//	    }
-//
-//}
 
 void I2C_ScanExternalBus(I2C_HandleTypeDef *hi2c)
 {
@@ -439,17 +394,7 @@ void I2C_ScanExternalBus(I2C_HandleTypeDef *hi2c)
     printf("====================================\r\n\r\n");
 }
 
-void DWT_Init(void)
-{
-    // Включаем доступ к DWT
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
 
-    // Сбрасываем счётчик (по желанию — можно не сбрасывать)
-    DWT->CYCCNT = 0;
-
-    // Включаем счётчик циклов
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-}
 
 
 #define DIAG_PRINT 1
@@ -533,7 +478,7 @@ void setMotorToCentres(BLDCMotor * thisMotor,float * target )
 
 
 	float oldangle;
-	*target = -1.0;
+	*target = -0.5;
 	do
 	{
 		oldangle = thisMotor->sensor->getAngle();
@@ -543,7 +488,7 @@ void setMotorToCentres(BLDCMotor * thisMotor,float * target )
 
 	*target = 0.0;
 	HAL_Delay(100);
-	*target = 1.0;
+	*target = 0.5;
 	uint32_t t_mov = HAL_GetTick();
 	HAL_Delay(500);
 	do
@@ -555,7 +500,7 @@ void setMotorToCentres(BLDCMotor * thisMotor,float * target )
 	while(oldangle!=thisMotor->sensor->getAngle());
 	*target = 0;
 	t_mov = (HAL_GetTick() - t_mov)/2;
-	*target = -1.0;
+	*target = -0.5;
 	HAL_Delay(t_mov);
 	*target = 0;
 
@@ -567,16 +512,13 @@ void setMotorToCentres(BLDCMotor * thisMotor,float * target )
 
 void run_encoder_test()
 {
-
+	//
 	Switch_I2C1_to_Main();
 	baseImu.begin(&hi2c1, 0x68);
-
 	Switch_I2C1_to_Alt();
 	pitch_encoder.begin(&hi2c1, 0x30);
 	yaw_encoder.begin(&hi2c1, 0x31);
 	frameImu.begin(&hi2c1, 0x68);
-
-
 
 
 //	pitchEmulator.begin(chainI2C.raw_pitch_enc);
@@ -586,20 +528,11 @@ void run_encoder_test()
 	  yawDma.begin(chainI2C.raw_yaw_enc,   chainI2C.raw_imu_gyro_gimb);
 
 
-	DWT_Init();
-
-
-	uint32_t prev[5];
-	uint32_t cur[5];
-
-	uint32_t tim_prev;
-	uint32_t tim_cur;
-
 
 
 
 	chainI2C.init_chain();
-	printf("Chain init\n\r");
+
 	initMotor();
 
 
@@ -607,33 +540,43 @@ void run_encoder_test()
 	parser.registerHandler(0x0001, [](uint16_t key, uint32_t value) { az_speed = *(float*)&value;});
 	parser.registerHandler(0x0002, [](uint16_t key, uint32_t value) {  el_speed = *(float*)&value;});
 
+	parser.registerHandler(0xABCD, [](uint16_t key, uint32_t value) { if(settings.saveToFlash()) {printf(" Save OK\n\r");}else {printf(" Save ERROR\n\r");}});
+	parser.registerHandler(0xAABB, [](uint16_t key, uint32_t value) { settings.PrintAllData();});
+	parser.registerHandler(0xAACC, [](uint16_t key, uint32_t value) { if(settings.loadFromFlash()) {printf(" Load OK\n\r");}else {printf(" Load ERROR\n\r");}});
 
-	parser.registerHandler(0x0013, [](uint16_t key, uint32_t value) {motor0.PID_velocity.P = *(float*)&value;});
-	parser.registerHandler(0x0014, [](uint16_t key, uint32_t value) {motor0.PID_velocity.I = *(float*)&value;});
-	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {motor0.PID_velocity.D = *(float*)&value;});
-	parser.registerHandler(0x0016, [](uint16_t key, uint32_t value) {motor0.LPF_velocity.Tf = *(float*)&value;});
-
-	parser.registerHandler(0x0023, [](uint16_t key, uint32_t value) {motor1.PID_velocity.P = *(float*)&value;});
-	parser.registerHandler(0x0024, [](uint16_t key, uint32_t value) {motor1.PID_velocity.I = *(float*)&value;});
-	parser.registerHandler(0x0025, [](uint16_t key, uint32_t value) {motor1.PID_velocity.D = *(float*)&value;});
-	parser.registerHandler(0x0026, [](uint16_t key, uint32_t value) {motor1.LPF_velocity.Tf = *(float*)&value;});
+	parser.registerHandler(0xBBAA, [](uint16_t key, uint32_t value) { Need_to_calibrate = true;});
 
 
 
-	parser.registerHandler(0x0030, [](uint16_t key, uint32_t value) { up_test_pos = pitchDma.getWrappedAngle(); });
-	parser.registerHandler(0x0031, [](uint16_t key, uint32_t value) { dw_test_pos = pitchDma.getWrappedAngle(); });
+	parser.registerHandler(0x0013, [](uint16_t key, uint32_t value) {settings.get().azMotor_Pid_velocity_P   = motor0.PID_velocity.P  = *(float*)&value;});
+	parser.registerHandler(0x0014, [](uint16_t key, uint32_t value) {settings.get().azMotor_Pid_velocity_I   = motor0.PID_velocity.I  = *(float*)&value;});
+	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {settings.get().azMotor_Pid_velocity_D   = motor0.PID_velocity.D  = *(float*)&value;});
+	parser.registerHandler(0x0016, [](uint16_t key, uint32_t value) {settings.get().azMotor_LPF_velocity_TF  = motor0.LPF_velocity.Tf = *(float*)&value;});
 
-	parser.registerHandler(0x0032, [](uint16_t key, uint32_t value) { runtest = true;   el_speed = 1.0f; });
-	parser.registerHandler(0x0033, [](uint16_t key, uint32_t value) { runtest = false;  el_speed = 0.0f; });
+	parser.registerHandler(0x0023, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_P    = motor1.PID_velocity.P  = *(float*)&value;});
+	parser.registerHandler(0x0024, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_I    = motor1.PID_velocity.I  = *(float*)&value;});
+	parser.registerHandler(0x0025, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_D    = motor1.PID_velocity.D  = *(float*)&value;});
+	parser.registerHandler(0x0026, [](uint16_t key, uint32_t value) {settings.get().azMotor_LPF_velocity_TF   = motor1.LPF_velocity.Tf = *(float*)&value;});
 
 
 
 
-//	parser.registerHandler(0x0013, [](uint16_t key, uint32_t value) {motor0.PID_velocity.P = *(float*)&value;});
-//	parser.registerHandler(0x0014, [](uint16_t key, uint32_t value) {motor0.PID_velocity.I = *(float*)&value;});
-//	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {motor0.PID_velocity.D = *(float*)&value;});
-//
-//	parser.registerHandler(0x0016, [](uint16_t key, uint32_t value) {motor0.LPF_velocity.Tf = *(float*)&value;});
+
+	parser.registerHandler(0x0030, [](uint16_t key, uint32_t value) { up_test_pos = pitchDma.getAngle(); });
+	parser.registerHandler(0x0031, [](uint16_t key, uint32_t value) { dw_test_pos = pitchDma.getAngle(); });
+
+	parser.registerHandler(0x0032, [](uint16_t key, uint32_t value) { runtest_el = true;   el_speed = 1.0f; });
+	parser.registerHandler(0x0033, [](uint16_t key, uint32_t value) { runtest_el = false;  el_speed = 0.0f; });
+
+
+	parser.registerHandler(0x0040, [](uint16_t key, uint32_t value) { left_test_pos = yawDma.getAngle(); });
+	parser.registerHandler(0x0041, [](uint16_t key, uint32_t value) { right_test_pos = yawDma.getAngle(); });
+
+	parser.registerHandler(0x0042, [](uint16_t key, uint32_t value) { runtest_az = true;   az_speed = 1.0f; });
+	parser.registerHandler(0x0043, [](uint16_t key, uint32_t value) { runtest_az = false;  az_speed = 0.0f; });
+
+
+
 
 
 
@@ -647,38 +590,29 @@ void run_encoder_test()
 	//HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 	HAL_UART_Receive_DMA(&huart1, uart_rx_dma_buffer, UART_RX_DMA_BUF_SIZE);
 
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
 
-	HAL_TIM_Base_Start_IT(&htim6);
-
-	HAL_Delay(1000);
-	setMotorToCentres(&motor0, &az_speed);
-	setMotorToCentres(&motor1, &el_speed);
 
 
 
-	motor0.initFOC(NOT_SET);
-	motor1.initFOC(NOT_SET);
-
-//	motor0.zero_electric_angle = M_PI/2.0;
-//	motor1.zero_electric_angle = M_PI/2.0;
-
-	printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
-
-	printf("motor1 elangle %f\n\r", motor1.zero_electric_angle);
+	HAL_TIM_Base_Start_IT(&htim6);
+	HAL_Delay(100);
 
 
-	float w;
+	motor0.initFOC(settings.get().azMotor_electric_angle);
+	motor1.initFOC(settings.get().elMotor_electric_angle);
+
+
 
 	el_speed = 0.0;
-	int dir = 1;
+
 	uint8_t b;
-	uint32_t t_start = HAL_GetTick();
 
 
 
 	while(1)
 	{
+
+
 
 		if (fifo.pop(b))
 		{
@@ -688,36 +622,84 @@ void run_encoder_test()
 				if (chainI2C.overload>1000)
 				{
 					printf(">ov:%d\n",chainI2C.overload);
-					chainI2C.overload=0;
+
 					HAL_TIM_Base_Stop_IT(&htim6);
+					HAL_Delay(100);
 					I2C_Recover(&hi2c1);
+					HAL_Delay(100);
 					HAL_TIM_Base_Start_IT(&htim6);
+					HAL_Delay(100);
+					chainI2C.overload=0;
+				}
+
+				if (Need_to_calibrate)
+				{
+
+					setMotorToCentres(&motor0, &az_speed);
+					motor0.controller = ControlType::none;
+					motor0.initFOC(NOT_SET);
+
+
+					setMotorToCentres(&motor1, &el_speed);
+					motor1.controller = ControlType::none;
+					motor1.initFOC(NOT_SET);
+
+					settings.get().azMotor_electric_angle = motor0.zero_electric_angle;
+					settings.get().elMotor_electric_angle = motor1.zero_electric_angle;
+
+					printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
+					printf("motor1 elangle %f\n\r", motor1.zero_electric_angle);
+
+					motor0.controller = ControlType::velocity;
+					motor1.controller = ControlType::velocity;
+					Need_to_calibrate  = false;
+
+
 				}
 
 
 
-					//printf(">px:%f\n",pitchEmulator.getAngle());
+				// print real angle position
+				 float angle = pitchDma.getAngle();
+				 printf(">pitch_angle:%f\n",angle);
+				 angle = yawDma.getAngle();
+				 printf(">yaw_angle:%f\n",angle);
 
-					//printf(">vp:%f\n",motor1.shaft_velocity_sp);
-					printf(">vm:%f\n",motor1.shaft_velocity);
-					printf(">vi:%f\n",el_speed);
+				 printf(">zEL:%f\n",motor1.zero_electric_angle);
+				 printf(">zAz:%f\n",motor0.zero_electric_angle);
 
-
-					printf(">vq:%f\n",motor1.voltage_q);
-					printf(">dv:%f\n", motor1.shaft_velocity_sp - motor1.shaft_velocity);
-
-					printf(">Ua:%f\n",motor1.Ua);
-					printf(">Ub:%f\n",motor1.Ub);
-					printf(">Uc:%f\n",motor1.Uc);
-					printf(">Ea:%f\n",motor1.eangle);
-
-					printf(">Ep:%f\n",motor1.PID_velocity.error_prev);
-
-
-					chainI2C.get_gyro_gimb(&w);
-					printf(">gp:%f\n",w);
+//					//printf(">px:%f\n",pitchEmulator.getAngle());
 //
-					printf(">zea:%f\n",motor1.zero_electric_angle);
+//					//printf(">vp:%f\n",motor1.shaft_velocity_sp);
+//					printf(">vm:%f\n",motor1.shaft_velocity);
+					printf(">vin_el:%f\n",el_speed);
+					printf(">vin_az:%f\n",az_speed);
+
+//
+//
+					printf(">vqel:%f\n",motor1.voltage_q);
+					printf(">vqaz:%f\n",motor0.voltage_q);
+
+//					printf(">dv:%f\n", motor1.shaft_velocity_sp - motor1.shaft_velocity);
+//
+//					printf(">Ua:%f\n",motor1.Ua);
+//					printf(">Ub:%f\n",motor1.Ub);
+//					printf(">Uc:%f\n",motor1.Uc);
+//					printf(">Ea:%f\n",motor1.eangle);
+
+					printf(">Shaft_vel:%f\n",motor1.shaft_velocity);
+					printf(">Shaft_vel_sp:%f\n",motor1.shaft_velocity_sp);
+
+
+
+//
+//					printf(">Ep:%f\n",motor1.PID_velocity.error_prev);
+//
+//
+//					chainI2C.get_gyro_gimb(&w);
+//					printf(">gp:%f\n",w);
+////
+//					printf(">zea:%f\n",motor1.zero_electric_angle);
 
 //					chainI2C.get_gyro_static(&w);
 //					printf(">ga:%f\n",w);
@@ -747,167 +729,47 @@ void run_encoder_test()
 //					printf(">pp:%f\n",angle);
 
 
-					 float angle = pitchDma.getWrappedAngle();
-					 printf(">pp:%f\n",angle);
-
-		if (runtest) {
-			if ((angle > up_test_pos) && (dir == 1)) {
-				dir = 0;
-				el_speed = -1.0;
-			}
-
-			if ((angle < dw_test_pos) && (dir == 0)) {
-				dir = 1;
-				el_speed = +1.0;
-			}
-		}
+		angle = pitchDma.getAngle();
+		printf(">angleBase:%f\n", angle);
 
 
 
 
 
-
-
+//		if (runtest_el) {
+//			if ((angle > up_test_pos) && (dir_el == 1)) {
+//				dir_el = 0;
+//				el_speed = -1.0;
+//			}
+//
+//			if ((angle < dw_test_pos) && (dir_el == 0)) {
+//				dir_el = 1;
+//				el_speed = +1.0;
+//			}
+//		}
+//
+//		angle = yawDma.getWrappedAngle();
+//		printf(">azp:%f\n", angle);
+//
+//		if (runtest_az) {
+//			if ((angle > left_test_pos) && (dir_az == 1)) {
+//				dir_az = 0;
+//				az_speed = -1.0;
+//			}
+//
+//			if ((angle < right_test_pos) && (dir_az == 0)) {
+//				dir_az = 1;
+//				az_speed = +1.0;
+//			}
+//		}
 
 
 	}
 
 
-	while(1)
-	{
-
-		float imu[3];
-
-//		if (chainI2C.get_gyro(imu))
-//		{
-//			printf(">gx:%f\n",imu[0]);
-//			printf(">gy:%f\n",imu[1]);
-//			printf(">gz:%f\n",imu[2]);
-//
-//			HAL_Delay(1);
-//		}
-
-//		printf(">gx:%d\n",chainI2C.raw_imu_gyro[0]);
 
 
-		cur[0] = chainI2C.chain[0].cnt;
-		cur[1] = chainI2C.chain[1].cnt;
-		cur[2] = chainI2C.chain[2].cnt;
-		cur[3] = chainI2C.chain[3].cnt;
-		cur[4] = chainI2C.chain[4].cnt;
-
-
-		tim_cur = timerCnt;
-
-
-		printf("Cnt: 0: %d 1: %d 2: %d 3: %d 4: %d   ---- ",cur[0],cur[1],cur[2],cur[3],cur[4]);
-
-		printf("rate: 0: %d 1: %d 2: %d 3: %d 4: %d  timcnt: %d \n\r",cur[0]-prev[0],cur[1]-prev[1],cur[2]-prev[2],cur[3]-prev[3],cur[4]-prev[4],tim_cur-tim_prev);
-
-		prev[0] = cur[0];
-		prev[1] = cur[1];
-		prev[2] = cur[2];
-		prev[3] = cur[3];
-		prev[4] = cur[4];
-
-		tim_prev = tim_cur;
-
-
-		HAL_Delay(1000);
-	}
-
-//	while(1)
-//	{
-//		uint16_t pos;
-//		float angle;
-//		HAL_StatusTypeDef res;
-//
-//
-//		uint32_t end;
-//
-//
-//
-//		DWT->CYCCNT = 0;
-//		res= pitch_encoder.getAbsolutePosition(&pos);
-//		end = DWT->CYCCNT;
-//        if (res == HAL_OK)
-//        {
-//        	pitch_encoder.getAngleDegrees(&angle);
-//#if DIAG_PRINT
-//            printf(">pA:%f\n",angle);
-//            printf(">pP:%d\n",pos);
-//            printf(">dtp:%d\n",end / (SystemCoreClock / 1000000));
-//#endif
-//
-//		}
-//        else
-//        {
-//        	printf("Enc pitch err %d \n", res);
-//        }
-//
-//
-//
-//
-//		DWT->CYCCNT = 0;
-//		int r1= I2C_MemRead_LowLevel(0x30, 33, (uint8_t*)&pos, 2);
-//		end = DWT->CYCCNT;
-//        if (res == 0)
-//        {
-//        	pitch_encoder.getAngleDegrees(&angle);
-//#if DIAG_PRINT
-//            printf(">dA:%f\n",angle);
-//            printf(">dP:%d\n",pos);
-//            printf(">dtd:%d\n",end / (SystemCoreClock / 1000000));
-//#endif
-//
-//		}
-//        else
-//        {
-//        	printf("Enc pitch err %d \n", res);
-//        }
-//
-//
-//        DWT->CYCCNT = 0;
-//		res= yaw_encoder.getAbsolutePosition(&pos);
-//		end = DWT->CYCCNT;
-//        if (res == HAL_OK)
-//        {
-//        	yaw_encoder.getAngleDegrees(&angle);
-//#if DIAG_PRINT
-//            printf(">yA:%f\n",angle);
-//            printf(">yP:%d\n",pos);
-//            printf(">dty:%d\n",end / (SystemCoreClock / 1000000));
-//#endif
-//		}
-//        else
-//        {
-//          	printf("Enc yaw err %d \n", res);
-//        }
-//
-//        DWT->CYCCNT = 0;
-//        float gyro[3], accel[3], temp;
-//		int gres= frameImu.read(gyro, accel, &temp);
-//		end = DWT->CYCCNT;
-//        if (gres == ICM20602_OK)
-//        {
-//#if DIAG_PRINT
-//            printf(">g0:%f\n",gyro[0]);
-//            printf(">g1:%f\n",gyro[1]);
-//            printf(">g2:%f\n",gyro[2]);
-//            printf(">dtg:%d\n",end / (SystemCoreClock / 1000000));
-//#endif
-//		}
-//        else
-//        {
-//          	printf("Enc yaw err %d \n", res);
-//        }
-//
-//
-//
-//        HAL_Delay(1);
-//	}
 }
-
 
 #if 0
 void run_encoder_test()
@@ -1219,6 +1081,10 @@ int main(void)
   // SystemClock_Config_104MHz();
   SystemClock_Config();
 
+
+
+
+
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -1237,9 +1103,30 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  bool loadFlash_result = settings.loadFromFlash();
+
+  // enable UART IC
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
+
+	for (int i = 0; i < 10; i++) {
+		printf(
+				"-------------------------------------------------------------------------------------------\n\r");
+	}
 
 
-  //I2C_ScanExternalBus(&hi2c1);
+  printf("---------------------------------------START-----------------------------------------------\n\r");
+
+  printf(loadFlash_result ? "Settings Load Ok \n\r" : "Settings Load ERR\n\r");
+
+
+//  if (!loadFlash_result)
+//  {
+//	  printf("WARNING: Load Default Settings \n\r");
+//	  settings.saveToFlash();
+//  }
+
+
+
 
   while(1)
   {
