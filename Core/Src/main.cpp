@@ -140,6 +140,9 @@ float right_test_pos;
 
 bool runtest_el, runtest_az;
 
+bool autopid_az = false;
+bool autopid_el = false;
+
 
 
 sensors chainI2C = sensors(&hi2c1);
@@ -182,6 +185,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         HAL_UART_Receive_DMA(&huart1, uart_rx_dma_buffer, UART_RX_DMA_BUF_SIZE);
     }
 }
+
+
+
+
 
 void I2C_Recover(I2C_HandleTypeDef *hi2c);
 
@@ -267,12 +274,12 @@ void step_motor() {
 	float gxyz[3] = { 0 };
 	if (chainI2C.get_gyro_gimb(gxyz) > 0) {
 		motor1.move(el_speed);
-		if ((motor1.controller == ControlType::velocity)||(motor1.controller == ControlType::angle)) {
+		if ((motor1.controller == ControlType::velocity)||(motor1.controller == ControlType::angle)||(motor1.controller == ControlType::voltage)) {
 			motor1.loopFOC();
 		}
 
 		motor0.move(az_speed);
-		if ((motor0.controller == ControlType::velocity)||(motor0.controller == ControlType::angle)) {
+		if ((motor0.controller == ControlType::velocity)||(motor0.controller == ControlType::angle)||(motor1.controller == ControlType::voltage)) {
 			motor0.loopFOC();
 		}
 	}
@@ -295,9 +302,9 @@ void initMotor(void)
 
 		// settings for drive 0 (Azimuth engine)
 	    driverMot0.voltage_power_supply = vm;
-	    driverMot0.voltage_limit = settings.get().azMotor_Voltage_limit;
+	    driverMot0.voltage_limit = settings.get().azMotor_voltage_limit;
 	    motor0.pole_pairs = 7;
-	    motor0.voltage_limit = settings.get().azMotor_Voltage_limit;
+	    motor0.voltage_limit = settings.get().azMotor_voltage_limit;
 	    motor0.velocity_limit = settings.get().azMotor_velocity_limit;
 	    motor0.controller = ControlType::velocity;
 	    motor0.foc_modulation = FOCModulationType::SinePWM;
@@ -309,15 +316,15 @@ void initMotor(void)
 
 	    motor0.PID_velocity.output_ramp = 10000.0f; // ??
 	    motor0.PID_velocity.limit = settings.get().azMotor_velocity_limit;
-	    motor0.voltage_sensor_align = settings.get().azMotor_Voltage_limit;
+	    motor0.voltage_sensor_align = settings.get().azMotor_voltage_limit;
 
 ///////////////////////////////////////////////////////////
 
 		// settings for drive 1 (Pitch engine)
 	    driverMot1.voltage_power_supply = vm;
-	    driverMot1.voltage_limit = settings.get().elMotor_Voltage_limit;
+	    driverMot1.voltage_limit = settings.get().elMotor_voltage_limit;
 	    motor1.pole_pairs = 7;
-	    motor1.voltage_limit = settings.get().elMotor_Voltage_limit;;
+	    motor1.voltage_limit = settings.get().elMotor_voltage_limit;;
 	    motor1.velocity_limit = 30.0f;
 	    motor1.controller = ControlType::velocity;
 	    motor1.PID_velocity.output_ramp = 10000.0f;
@@ -329,7 +336,7 @@ void initMotor(void)
 	    motor1.PID_velocity.I = settings.get().elMotor_Pid_velocity_I;
 	    motor1.PID_velocity.D = settings.get().elMotor_Pid_velocity_D;
 	    motor1.LPF_velocity.Tf = settings.get().elMotor_LPF_velocity_TF;
-	    motor1.voltage_sensor_align = settings.get().elMotor_Voltage_limit;
+	    motor1.voltage_sensor_align = settings.get().elMotor_voltage_limit;
 ////////////////////////////////////////////////////////////////
 
 
@@ -509,6 +516,89 @@ void setMotorToCentres(BLDCMotor * thisMotor,float * target )
 }
 
 
+// Пример структуры (упрощённо)
+void autoTuneVelocityPID(BLDCMotor* motor, uint8_t motorId, float voltageAmplitude = 2.5f) {
+
+	printf("=== Auto-tuning PID for Motor %d (voltageAmplitude=%.1f) ===\r\n", motorId, voltageAmplitude);
+    // Переключаемся в режим voltage (torque)
+    motor->controller = ControlType::voltage;   // или voltage
+    motor->PID_velocity.P = 0;
+
+    float targetVoltage = voltageAmplitude;
+    uint32_t start = HAL_GetTick();
+    float lastVel = 0;
+    int crossings = 0;
+    float periodSum = 0;
+    float maxVel = 0, minVel = 0;
+
+    while (HAL_GetTick() - start < 4000) {   // 4 секунд
+
+
+    	if (motorId == 0)
+    		az_speed = targetVoltage;
+    	else
+    		el_speed = targetVoltage;
+
+        float vel = motor->shaft_velocity;
+
+        // Детектируем пересечение нуля скорости
+        if ((lastVel * vel) < 0 && fabs(vel) > 0.5f) {
+            crossings++;
+            if (crossings > 3) {
+                periodSum += (HAL_GetTick() - start) * 0.001f;
+            }
+        }
+        lastVel = vel;
+
+        if (vel > maxVel) maxVel = vel;
+        if (vel < minVel) minVel = vel;
+
+        // Переключаем реле
+        if ((targetVoltage > 0 && vel > 1.0f) || (targetVoltage < 0 && vel < -1.0f)) {
+            targetVoltage = -targetVoltage;
+        }
+
+        HAL_Delay(1);
+    }
+
+    // Расчёт Ku и Tu
+        float Ku = (4.0f * voltageAmplitude) / (M_PI * (maxVel - minVel + 0.01f));
+        float Tu = (crossings > 5) ? (periodSum / (crossings - 3)) : 0.0f;
+
+        if (Tu > 0.01f && Ku > 0.05f) {
+            motor->PID_velocity.P = 0.45f * Ku;
+            motor->PID_velocity.I = (0.54f * Ku) / Tu;
+            motor->PID_velocity.D = 0.0f;
+
+            printf("Motor %d tuned OK: P=%.3f, I=%.3f (Ku=%.3f, Tu=%.3f)\r\n",
+                   motorId, motor->PID_velocity.P, motor->PID_velocity.I, Ku, Tu);
+
+            // Сохранение в настройки
+            if (motorId == 0) {
+                settings.get().azMotor_Pid_velocity_P = motor->PID_velocity.P;
+                settings.get().azMotor_Pid_velocity_I = motor->PID_velocity.I;
+            } else {
+                settings.get().elMotor_Pid_velocity_P = motor->PID_velocity.P;
+                settings.get().elMotor_Pid_velocity_I = motor->PID_velocity.I;
+            }
+            settings.saveToFlash();
+            printf("Settings saved to flash\r\n");
+        } else {
+            printf("Motor %d tuning FAILED (weak oscillations or Ku/Tu invalid)\r\n", motorId);
+            // Восстанавливаем старые значения
+//            motor->PID_velocity.P = oldP;
+//            motor->PID_velocity.I = oldI;
+//            motor->PID_velocity.D = oldD;
+        }
+
+        // Возврат в нормальный режим
+
+        if (motorId == 0) motor1.controller = ControlType::velocity;
+        else motor0.controller = ControlType::velocity;
+
+        printf("=== Tuning Motor %d finished ===\r\n", motorId);
+}
+
 
 void run_encoder_test()
 {
@@ -576,7 +666,8 @@ void run_encoder_test()
 	parser.registerHandler(0x0043, [](uint16_t key, uint32_t value) { runtest_az = false;  az_speed = 0.0f; });
 
 
-
+	parser.registerHandler(0x0050, [](uint16_t key, uint32_t value) { autopid_az = true; });
+	parser.registerHandler(0x0051, [](uint16_t key, uint32_t value) { autopid_el = true; });
 
 
 
@@ -589,9 +680,6 @@ void run_encoder_test()
 
 	//HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 	HAL_UART_Receive_DMA(&huart1, uart_rx_dma_buffer, UART_RX_DMA_BUF_SIZE);
-
-
-
 
 
 	HAL_TIM_Base_Start_IT(&htim6);
@@ -658,6 +746,19 @@ void run_encoder_test()
 				}
 
 
+				/* tune autopid */
+				if (autopid_az==true)
+				{
+					autoTuneVelocityPID(&motor0,0, settings.get().azMotor_voltage_limit);
+					autopid_az=false;
+				}
+
+				/* tune autopid */
+				if (autopid_el==true)
+				{
+					autoTuneVelocityPID(&motor1,1, settings.get().elMotor_voltage_limit);
+					autopid_el=false;
+				}
 
 				// print real angle position
 				 float angle = pitchDma.getAngle();
@@ -665,103 +766,49 @@ void run_encoder_test()
 				 angle = yawDma.getAngle();
 				 printf(">yaw_angle:%f\n",angle);
 
-				 printf(">zEL:%f\n",motor1.zero_electric_angle);
-				 printf(">zAz:%f\n",motor0.zero_electric_angle);
+                 printf(">vin_el:%f\n",el_speed);
+				 printf(">vin_az:%f\n",az_speed);
 
-//					//printf(">px:%f\n",pitchEmulator.getAngle());
-//
-//					//printf(">vp:%f\n",motor1.shaft_velocity_sp);
-//					printf(">vm:%f\n",motor1.shaft_velocity);
-					printf(">vin_el:%f\n",el_speed);
-					printf(">vin_az:%f\n",az_speed);
-
-//
-//
-					printf(">vqel:%f\n",motor1.voltage_q);
-					printf(">vqaz:%f\n",motor0.voltage_q);
-
-//					printf(">dv:%f\n", motor1.shaft_velocity_sp - motor1.shaft_velocity);
-//
-//					printf(">Ua:%f\n",motor1.Ua);
-//					printf(">Ub:%f\n",motor1.Ub);
-//					printf(">Uc:%f\n",motor1.Uc);
-//					printf(">Ea:%f\n",motor1.eangle);
-
-					printf(">Shaft_vel:%f\n",motor1.shaft_velocity);
-					printf(">Shaft_vel_sp:%f\n",motor1.shaft_velocity_sp);
+				 printf(">azEncSpeed:%f\n",motor0.shaft_velocity);
+				 printf(">elEncSpeed:%f\n",motor1.shaft_velocity);
 
 
 
-//
-//					printf(">Ep:%f\n",motor1.PID_velocity.error_prev);
-//
-//
-//					chainI2C.get_gyro_gimb(&w);
-//					printf(">gp:%f\n",w);
-////
-//					printf(">zea:%f\n",motor1.zero_electric_angle);
-
-//					chainI2C.get_gyro_static(&w);
-//					printf(">ga:%f\n",w);
-//					printf(">s1:%f\n",gxyz[1]);
-//					printf(">s2:%f\n",gxyz[2]);
-
-//					printf(">Av:%f\n",az_spped);
-//					printf(">Pv:%f\n",el_spped);
 
 
 
-//					float angle = fmodf(motor0.shaft_angle + M_PI, 2.0f * M_PI);
-//					if (angle < 0) angle += 2.0f * M_PI;
-//				   angle -= M_PI;
 
-//
-//					if ((angle < -0.5) && (dir == 0)) {
-//						dir = 1;
-//						az_speed = +1.0;
-//					}
-//
-//					if ((angle > 0.5) && (dir == 1)) {
-//						dir = 0;
-//						az_speed = -1.0;
-//					}
-//
-//					printf(">pp:%f\n",angle);
+	    int dir_az=0;
+	    int dir_el=0;
+
 
 
 		angle = pitchDma.getAngle();
-		printf(">angleBase:%f\n", angle);
+		if (runtest_el) {
+			if ((angle > up_test_pos) && (dir_el == 1)) {
+				dir_el = 0;
+				el_speed = -1.0;
+			}
 
+			if ((angle < dw_test_pos) && (dir_el == 0)) {
+				dir_el = 1;
+				el_speed = +1.0;
+			}
+		}
 
+		angle = yawDma.getAngle();
 
+		if (runtest_az) {
+			if ((angle > left_test_pos) && (dir_az == 1)) {
+				dir_az = 0;
+				az_speed = -1.0;
+			}
 
-
-//		if (runtest_el) {
-//			if ((angle > up_test_pos) && (dir_el == 1)) {
-//				dir_el = 0;
-//				el_speed = -1.0;
-//			}
-//
-//			if ((angle < dw_test_pos) && (dir_el == 0)) {
-//				dir_el = 1;
-//				el_speed = +1.0;
-//			}
-//		}
-//
-//		angle = yawDma.getWrappedAngle();
-//		printf(">azp:%f\n", angle);
-//
-//		if (runtest_az) {
-//			if ((angle > left_test_pos) && (dir_az == 1)) {
-//				dir_az = 0;
-//				az_speed = -1.0;
-//			}
-//
-//			if ((angle < right_test_pos) && (dir_az == 0)) {
-//				dir_az = 1;
-//				az_speed = +1.0;
-//			}
-//		}
+			if ((angle < right_test_pos) && (dir_az == 0)) {
+				dir_az = 1;
+				az_speed = +1.0;
+			}
+		}
 
 
 	}
