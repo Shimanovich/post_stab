@@ -839,7 +839,7 @@ void run_encoder_test()
 					HAL_Delay(2000);
 
 					motor0.controller = ControlType::none;
-					motor0.initFOC(motor0.sensor->getAngle()-M_PI/2.0f);
+					motor0.initFOC(motor0.sensor->getAngle());
 					motor0.controller = ControlType::voltage;
 
 					printf("az electric angle %f \n\r",motor0.zero_electric_angle);
