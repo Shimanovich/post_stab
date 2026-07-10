@@ -74,6 +74,13 @@ void BLDCMotor::enable()
 
 }
 
+
+void BLDCMotor::setZeroPosDirect(void)
+{
+	setPhaseVoltage(voltage_sensor_align, 0,  0);
+}
+
+
 /**
   FOC functions
 */
@@ -184,6 +191,7 @@ void BLDCMotor::loopFOC() {
   // set the phase voltage - FOC heart function :)
   setPhaseVoltage(voltage_q, voltage_d, _electricalAngle(shaft_angle,pole_pairs));
 }
+
 
 // Iterative function running outer loop of the FOC algorithm
 // Behavior of this function is determined by the motor.controller variable

@@ -44,13 +44,14 @@ void SettingsManager::setDefaults() {
     m_settings.magic      				= MAGIC;
     m_settings.version     				= 2;
 
-    m_settings.azMotor_voltage_limit 	= 6.0;
-    m_settings.azMotor_velocity_limit	= 30.0;
+    m_settings.azMotor_voltage_limit 	= 8.0;
+    m_settings.azMotor_velocity_limit	= 40.0;
     m_settings.azMotor_Pid_velocity_P	= 0.0;
     m_settings.azMotor_Pid_velocity_I	= 0.0;
     m_settings.azMotor_Pid_velocity_D	= 0.0;
     m_settings.azMotor_LPF_velocity_TF	= 0.05;
     m_settings.azMotor_electric_angle   = 0.0;
+    m_settings.azZero_encoder_offet     = 0.0;
 
 
     m_settings.elMotor_voltage_limit	= 6.0;
@@ -60,6 +61,7 @@ void SettingsManager::setDefaults() {
     m_settings.elMotor_Pid_velocity_D	= 0.0;
     m_settings.elMotor_LPF_velocity_TF	= 0.0;
     m_settings.elMotor_electric_angle   = 0.0;
+    m_settings.elZero_encoder_offet     = 0.0;
 
 }
 
@@ -75,6 +77,8 @@ void SettingsManager::PrintAllData()
 	printf("azMotor_Pid_velocity_D  %f \n\r",   m_settings.azMotor_Pid_velocity_D);
 	printf("azMotor_LPF_velocity_TF	%f \n\r", 	m_settings.azMotor_LPF_velocity_TF);
 	printf("azMotor_electric_angle	%f \n\r", 	m_settings.azMotor_electric_angle);
+	printf("az_encoder_zero_offset	%f \n\r", 	m_settings.azZero_encoder_offet);
+
 
 
 	printf("elMotor_Voltage_limit   %f \n\r",	m_settings.elMotor_voltage_limit);
@@ -84,6 +88,7 @@ void SettingsManager::PrintAllData()
 	printf("elMotor_Pid_velocity_D  %f \n\r",   m_settings.elMotor_Pid_velocity_D);
 	printf("elMotor_LPF_velocity_TF	%f \n\r", 	m_settings.elMotor_LPF_velocity_TF);
 	printf("elMotor_electric_angle  %f \n\r", 	m_settings.elMotor_electric_angle);
+	printf("el_encoder_zero_offset	%f \n\r", 	m_settings.elZero_encoder_offet);
 
 
 }

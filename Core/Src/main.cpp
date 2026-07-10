@@ -181,7 +181,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         for (uint16_t i = 0; i < UART_RX_DMA_BUF_SIZE; i++) {
             fifo.push(uart_rx_dma_buffer[i]);
         }
-        // Сразу перезапускаем DMA-приём фиксированного объёма
         HAL_UART_Receive_DMA(&huart1, uart_rx_dma_buffer, UART_RX_DMA_BUF_SIZE);
     }
 }
@@ -252,13 +251,18 @@ void I2C_Recover(I2C_HandleTypeDef *hi2c);
 
 
 uint32_t timerCnt=0;
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  if (htim->Instance == TIM6)
-  {
-	  timerCnt++;
-	  chainI2C.Start();
-  }
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if (htim->Instance == TIM6) {
+		timerCnt++;
+		chainI2C.Start();
+
+		if (chainI2C.overload > 100) {
+			HAL_TIM_Base_Stop_IT(&htim6);
+			I2C_Recover(&hi2c1);
+			chainI2C.overload = 0;
+			HAL_TIM_Base_Start_IT(&htim6);
+		}
+	}
 }
 
 
@@ -274,12 +278,18 @@ void step_motor() {
 	float gxyz[3] = { 0 };
 	if (chainI2C.get_gyro_gimb(gxyz) > 0) {
 		motor1.move(el_speed);
-		if ((motor1.controller == ControlType::velocity)||(motor1.controller == ControlType::angle)||(motor1.controller == ControlType::voltage)) {
+		if ((motor1.controller == ControlType::velocity)||
+		    (motor1.controller == ControlType::angle)||
+			(motor1.controller == ControlType::voltage))
+		{
 			motor1.loopFOC();
 		}
 
 		motor0.move(az_speed);
-		if ((motor0.controller == ControlType::velocity)||(motor0.controller == ControlType::angle)||(motor1.controller == ControlType::voltage)) {
+		if ((motor0.controller == ControlType::velocity)||
+			(motor0.controller == ControlType::angle)||
+			(motor0.controller == ControlType::voltage))
+		{
 			motor0.loopFOC();
 		}
 	}
@@ -318,6 +328,10 @@ void initMotor(void)
 	    motor0.PID_velocity.limit = settings.get().azMotor_velocity_limit;
 	    motor0.voltage_sensor_align = settings.get().azMotor_voltage_limit;
 
+	    yawDma.zero_offset        = settings.get().azZero_encoder_offet;
+
+	    //motor0.sensor->natural_direction = Direction::CW;
+
 ///////////////////////////////////////////////////////////
 
 		// settings for drive 1 (Pitch engine)
@@ -337,6 +351,10 @@ void initMotor(void)
 	    motor1.PID_velocity.D = settings.get().elMotor_Pid_velocity_D;
 	    motor1.LPF_velocity.Tf = settings.get().elMotor_LPF_velocity_TF;
 	    motor1.voltage_sensor_align = settings.get().elMotor_voltage_limit;
+
+	    pitchDma.zero_offset        = settings.get().elZero_encoder_offet;
+
+	    //motor1.sensor->natural_direction = Direction::UNKNOWN;
 ////////////////////////////////////////////////////////////////
 
 
@@ -417,60 +435,107 @@ void I2C_ScanExternalBus(I2C_HandleTypeDef *hi2c)
 // 6  - SDA прижат к земле (bus stuck)
 
 
-void I2C_Recover(I2C_HandleTypeDef *hi2c)
+
+// Новая универсальная функция Bus Recovery
+void I2C_BusRecovery(uint8_t isAltPins)
 {
-    // 1. Прерываем текущую операцию
-    HAL_I2C_Master_Abort_IT(hi2c, 0x30 << 1);
-    HAL_Delay(3);
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_TypeDef* GPIOx;
+    uint16_t SCL_Pin, SDA_Pin;
 
-    // 2. Bus Recovery (если SDA прижат)
-    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET)   // SDA = PA14
-    {
-        printf("SDA stuck → Bus Recovery\r\n");
+    if (isAltPins) {
+        GPIOx = GPIOA;
+        SCL_Pin = GPIO_PIN_15;
+        SDA_Pin = GPIO_PIN_14;
+        printf("Bus Recovery: Alternative pins (PA14/PA15)\r\n");
+    } else {
+        GPIOx = GPIOB;
+        SCL_Pin = GPIO_PIN_6;
+        SDA_Pin = GPIO_PIN_7;
+        printf("Bus Recovery: Main pins (PB6/PB7)\r\n");
+    }
 
-        // Переводим SCL в Output Open-Drain
-        GPIO_InitTypeDef GPIO_InitStruct = {0};
-        GPIO_InitStruct.Pin   = GPIO_PIN_15;           // SCL = PA15
-        GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
-        GPIO_InitStruct.Pull  = GPIO_PULLUP;
-        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    // 1. Освобождаем оба пина в Open-Drain
+    GPIO_InitStruct.Pin   = SCL_Pin | SDA_Pin;
+    GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
+    GPIO_InitStruct.Pull  = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
 
-        // 9 тактов SCL
-        for (int i = 0; i < 9; i++)
-        {
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-            HAL_Delay(1);
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOx, SDA_Pin, GPIO_PIN_SET);  // SDA high
+    HAL_GPIO_WritePin(GPIOx, SCL_Pin, GPIO_PIN_SET);  // SCL high
+    HAL_Delay(1);
+
+    // 2. Если SDA прижат — генерируем clock pulses
+    if (HAL_GPIO_ReadPin(GPIOx, SDA_Pin) == GPIO_PIN_RESET) {
+        printf("SDA stuck low → generating 10 SCL pulses\r\n");
+        for (int i = 0; i < 10; i++) {
+            HAL_GPIO_WritePin(GPIOx, SCL_Pin, GPIO_PIN_RESET);
+            HAL_Delay(1);           // ~500-1000 Гц (можно Delay_us для точности)
+            HAL_GPIO_WritePin(GPIOx, SCL_Pin, GPIO_PIN_SET);
             HAL_Delay(1);
         }
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-        HAL_Delay(5);
-
-        // Возвращаем SCL в режим I2C
-        GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-        GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
     }
+
+    // 3. Генерируем STOP условие (SCL high + SDA low→high)
+    HAL_GPIO_WritePin(GPIOx, SDA_Pin, GPIO_PIN_RESET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOx, SCL_Pin, GPIO_PIN_SET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOx, SDA_Pin, GPIO_PIN_SET);
+    HAL_Delay(5);
+
+    // 4. Восстанавливаем альтернативную функцию
+    if (isAltPins) {
+        Switch_I2C1_to_Alt();
+    } else {
+    	Switch_I2C1_to_Main();
+    }
+}
+
+
+// ====================== ОСНОВНАЯ ФУНКЦИЯ RECOVER ======================
+void I2C_Recover(I2C_HandleTypeDef *hi2c)
+{
+    printf("=== I2C_Recover started. Error=0x%lx State=%d ===\r\n",
+           hi2c->ErrorCode, hi2c->State);
+
+    // 1. Прервать текущую транзакцию
+    HAL_I2C_Master_Abort_IT(hi2c, 0xFF);  // broadcast address
+    HAL_Delay(5);
+
+//    // 2. Определяем текущий набор пинов и делаем recovery
+//    // Простая эвристика: проверяем, на каком пине SDA low
+//    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14) == GPIO_PIN_RESET) {
+//        I2C_BusRecovery(1);  // alt pins
+//    } else if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == GPIO_PIN_RESET) {
+//        I2C_BusRecovery(0);  // main pins
+//    } else {
+//        // Если ничего не прижато — всё равно делаем для текущего (alt по умолчанию)
+//        I2C_BusRecovery(1);
+//    }
+
+    I2C_BusRecovery(0);
+    I2C_BusRecovery(1);
 
     // 3. Полный сброс периферии
     __HAL_RCC_I2C1_FORCE_RESET();
+    HAL_Delay(2);
     __HAL_RCC_I2C1_RELEASE_RESET();
 
     HAL_I2C_DeInit(hi2c);
     MX_I2C1_Init();
 
-    // 4. Принудительно сбрасываем состояние
+    // 4. Очистка DMA (критично!)
+    if (hi2c->hdmatx != NULL) HAL_DMA_Abort(hi2c->hdmatx);
+    if (hi2c->hdmarx != NULL) HAL_DMA_Abort(hi2c->hdmarx);
+
     hi2c->State     = HAL_I2C_STATE_READY;
     hi2c->Mode      = HAL_I2C_MODE_NONE;
     hi2c->ErrorCode = HAL_I2C_ERROR_NONE;
 
-//    // 5. Сбрасываем пользовательские флаги
-//    i2cRxComplete = 0;
-//    i2cError = 0;
-
-    printf("I2C Recovered\r\n");
-    HAL_Delay(15);
+    HAL_Delay(10);
+    printf("=== I2C_Recover finished ===\r\n");
 }
 
 
@@ -516,8 +581,51 @@ void setMotorToCentres(BLDCMotor * thisMotor,float * target )
 }
 
 
+
+
+void move_motor_to_zero_position(BLDCMotor * thisMotor, float * target, float polarity)
+{
+    thisMotor->foc_modulation = FOCModulationType::SinePWM;
+    thisMotor->controller = ControlType::velocity_openloop;
+
+    const float PI = 3.14159265f;
+
+
+    // ===  Основной цикл приближения к нулю ===
+    float speed = 0.1f;
+
+    while (fabs(thisMotor->sensor->getAngle()) > 0.01) {
+
+        float vel_for_pos = + polarity * speed;
+        float vel_for_neg = - polarity * speed;
+
+        while (thisMotor->sensor->getAngle() > 0.0f) {
+            *target = vel_for_pos;
+            printf(">az:%f\n", *target);
+            printf(">sp:%f\n", speed);
+        }
+
+        speed /= 2.0f;
+
+        while (thisMotor->sensor->getAngle() < 0.0f) {
+            *target = vel_for_neg;
+            printf(">az:%f\n", *target);
+            printf(">sp:%f\n", speed);
+        }
+
+        speed /= 2.0f;
+
+        printf(">az:%f\n", *target);
+        printf(">sp:%f\n", speed);
+    }
+
+    printf("Stopped at position %f\n\r", thisMotor->sensor->getAngle());
+    *target = 0.0f;
+}
+
+
 // Пример структуры (упрощённо)
-void autoTuneVelocityPID(BLDCMotor* motor, uint8_t motorId, float voltageAmplitude = 2.5f) {
+void autoTuneVelocityPID(BLDCMotor* motor, uint8_t motorId,float *speedPointer, float voltageAmplitude = 2.5f) {
 
 	printf("=== Auto-tuning PID for Motor %d (voltageAmplitude=%.1f) ===\r\n", motorId, voltageAmplitude);
     // Переключаемся в режим voltage (torque)
@@ -533,13 +641,9 @@ void autoTuneVelocityPID(BLDCMotor* motor, uint8_t motorId, float voltageAmplitu
 
     while (HAL_GetTick() - start < 4000) {   // 4 секунд
 
+    	*speedPointer = targetVoltage;
 
-    	if (motorId == 0)
-    		az_speed = targetVoltage;
-    	else
-    		el_speed = targetVoltage;
-
-        float vel = motor->shaft_velocity;
+    	float vel = motor->shaft_velocity;
 
         // Детектируем пересечение нуля скорости
         if ((lastVel * vel) < 0 && fabs(vel) > 0.5f) {
@@ -558,7 +662,7 @@ void autoTuneVelocityPID(BLDCMotor* motor, uint8_t motorId, float voltageAmplitu
             targetVoltage = -targetVoltage;
         }
 
-        HAL_Delay(1);
+        //HAL_Delay(1);
     }
 
     // Расчёт Ku и Tu
@@ -581,20 +685,23 @@ void autoTuneVelocityPID(BLDCMotor* motor, uint8_t motorId, float voltageAmplitu
                 settings.get().elMotor_Pid_velocity_P = motor->PID_velocity.P;
                 settings.get().elMotor_Pid_velocity_I = motor->PID_velocity.I;
             }
-            settings.saveToFlash();
-            printf("Settings saved to flash\r\n");
+            //settings.saveToFlash();
+            //printf("Settings saved to flash\r\n");
         } else {
             printf("Motor %d tuning FAILED (weak oscillations or Ku/Tu invalid)\r\n", motorId);
-            // Восстанавливаем старые значения
-//            motor->PID_velocity.P = oldP;
-//            motor->PID_velocity.I = oldI;
-//            motor->PID_velocity.D = oldD;
+
         }
 
         // Возврат в нормальный режим
 
-        if (motorId == 0) motor1.controller = ControlType::velocity;
-        else motor0.controller = ControlType::velocity;
+       *speedPointer =0.0f;
+
+
+        if (motorId == 0)
+        	motor1.controller = ControlType::velocity;
+        else
+        	motor0.controller = ControlType::velocity;
+
 
         printf("=== Tuning Motor %d finished ===\r\n", motorId);
 }
@@ -619,8 +726,6 @@ void run_encoder_test()
 
 
 
-
-
 	chainI2C.init_chain();
 
 	initMotor();
@@ -632,7 +737,15 @@ void run_encoder_test()
 
 	parser.registerHandler(0xABCD, [](uint16_t key, uint32_t value) { if(settings.saveToFlash()) {printf(" Save OK\n\r");}else {printf(" Save ERROR\n\r");}});
 	parser.registerHandler(0xAABB, [](uint16_t key, uint32_t value) { settings.PrintAllData();});
-	parser.registerHandler(0xAACC, [](uint16_t key, uint32_t value) { if(settings.loadFromFlash()) {printf(" Load OK\n\r");}else {printf(" Load ERROR\n\r");}});
+
+	parser.registerHandler(0xAACC, [](uint16_t key, uint32_t value) {
+		if (settings.loadFromFlash()) {
+			printf(" Load OK\n\r");
+			initMotor();
+		} else {
+			printf(" Load ERROR\n\r");
+		}
+	});
 
 	parser.registerHandler(0xBBAA, [](uint16_t key, uint32_t value) { Need_to_calibrate = true;});
 
@@ -643,11 +756,20 @@ void run_encoder_test()
 	parser.registerHandler(0x0015, [](uint16_t key, uint32_t value) {settings.get().azMotor_Pid_velocity_D   = motor0.PID_velocity.D  = *(float*)&value;});
 	parser.registerHandler(0x0016, [](uint16_t key, uint32_t value) {settings.get().azMotor_LPF_velocity_TF  = motor0.LPF_velocity.Tf = *(float*)&value;});
 
-	parser.registerHandler(0x0023, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_P    = motor1.PID_velocity.P  = *(float*)&value;});
-	parser.registerHandler(0x0024, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_I    = motor1.PID_velocity.I  = *(float*)&value;});
-	parser.registerHandler(0x0025, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_D    = motor1.PID_velocity.D  = *(float*)&value;});
-	parser.registerHandler(0x0026, [](uint16_t key, uint32_t value) {settings.get().azMotor_LPF_velocity_TF   = motor1.LPF_velocity.Tf = *(float*)&value;});
+	parser.registerHandler(0x0017, [](uint16_t key, uint32_t value) {settings.get().azMotor_voltage_limit    = motor0.driver->voltage_limit = motor0.voltage_limit = *(float*)&value;});
 
+	parser.registerHandler(0x0018, [](uint16_t key, uint32_t value) { motor0.absoluteZeroAlign();  settings.get().azZero_encoder_offet = yawDma.zero_offset;});
+
+
+
+	parser.registerHandler(0x0023, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_P   = motor1.PID_velocity.P  = *(float*)&value;});
+	parser.registerHandler(0x0024, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_I   = motor1.PID_velocity.I  = *(float*)&value;});
+	parser.registerHandler(0x0025, [](uint16_t key, uint32_t value) {settings.get().elMotor_Pid_velocity_D   = motor1.PID_velocity.D  = *(float*)&value;});
+	parser.registerHandler(0x0026, [](uint16_t key, uint32_t value) {settings.get().elMotor_LPF_velocity_TF  = motor1.LPF_velocity.Tf = *(float*)&value;});
+
+	parser.registerHandler(0x0027, [](uint16_t key, uint32_t value) {settings.get().elMotor_voltage_limit    = motor1.driver->voltage_limit = motor1.voltage_limit = *(float*)&value;});
+
+	parser.registerHandler(0x0028, [](uint16_t key, uint32_t value) {motor1.absoluteZeroAlign();  settings.get().elZero_encoder_offet = pitchDma.zero_offset;});
 
 
 
@@ -658,13 +780,11 @@ void run_encoder_test()
 	parser.registerHandler(0x0032, [](uint16_t key, uint32_t value) { runtest_el = true;   el_speed = 1.0f; });
 	parser.registerHandler(0x0033, [](uint16_t key, uint32_t value) { runtest_el = false;  el_speed = 0.0f; });
 
-
 	parser.registerHandler(0x0040, [](uint16_t key, uint32_t value) { left_test_pos = yawDma.getAngle(); });
 	parser.registerHandler(0x0041, [](uint16_t key, uint32_t value) { right_test_pos = yawDma.getAngle(); });
 
 	parser.registerHandler(0x0042, [](uint16_t key, uint32_t value) { runtest_az = true;   az_speed = 1.0f; });
 	parser.registerHandler(0x0043, [](uint16_t key, uint32_t value) { runtest_az = false;  az_speed = 0.0f; });
-
 
 	parser.registerHandler(0x0050, [](uint16_t key, uint32_t value) { autopid_az = true; });
 	parser.registerHandler(0x0051, [](uint16_t key, uint32_t value) { autopid_el = true; });
@@ -689,8 +809,6 @@ void run_encoder_test()
 	motor0.initFOC(settings.get().azMotor_electric_angle);
 	motor1.initFOC(settings.get().elMotor_electric_angle);
 
-
-
 	el_speed = 0.0;
 
 	uint8_t b;
@@ -707,39 +825,88 @@ void run_encoder_test()
 			parser.feed(b);
 		}
 
-				if (chainI2C.overload>1000)
-				{
-					printf(">ov:%d\n",chainI2C.overload);
 
-					HAL_TIM_Base_Stop_IT(&htim6);
-					HAL_Delay(100);
-					I2C_Recover(&hi2c1);
-					HAL_Delay(100);
-					HAL_TIM_Base_Start_IT(&htim6);
-					HAL_Delay(100);
-					chainI2C.overload=0;
-				}
 
 				if (Need_to_calibrate)
 				{
 
-					setMotorToCentres(&motor0, &az_speed);
-					motor0.controller = ControlType::none;
-					motor0.initFOC(NOT_SET);
 
-
-					setMotorToCentres(&motor1, &el_speed);
+					motor0.zero_electric_angle = 0;
 					motor1.controller = ControlType::none;
-					motor1.initFOC(NOT_SET);
+					move_motor_to_zero_position(&motor0, &az_speed, +1.0f);
+					HAL_Delay(100);
+					motor0.setZeroPosDirect();
+					HAL_Delay(2000);
 
-					settings.get().azMotor_electric_angle = motor0.zero_electric_angle;
-					settings.get().elMotor_electric_angle = motor1.zero_electric_angle;
+					motor0.controller = ControlType::none;
+					motor0.initFOC(motor0.sensor->getAngle()-M_PI/2.0f);
+					motor0.controller = ControlType::voltage;
 
-					printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
-					printf("motor1 elangle %f\n\r", motor1.zero_electric_angle);
+					printf("az electric angle %f \n\r",motor0.zero_electric_angle);
 
-					motor0.controller = ControlType::velocity;
-					motor1.controller = ControlType::velocity;
+					//motor0.controller = ControlType::voltage;
+
+
+
+//					motor1.zero_electric_angle = 0;
+//					motor0.controller = ControlType::none;
+//					move_motor_to_zero_position(&motor1, &el_speed, -1.0f);
+//					HAL_Delay(100);
+//
+//					//reet back all sensors
+//
+//					motor0.controller = ControlType::none;
+//
+//
+//					motor0.setZeroPosDirect();
+//					HAL_Delay(500);
+
+
+
+					//motor0.controller = ControlType::none;
+
+
+//					//motor0.initFOC(NOT_SET);
+//					motor0.controller = ControlType::voltage;
+//					printf(">yaw_angle:%f\n",yawDma.getAngle());
+//					motor0.absoluteZeroAlign();
+//					HAL_Delay(1000);
+//					printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
+
+
+
+
+//					move_motor_to_zero_position(&motor1, &el_speed, -1.0f);
+//					HAL_Delay(100);
+//					motor1.controller = ControlType::none;
+//					motor1.initFOC(NOT_SET);
+//
+//					printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
+//					printf("motor1 elangle %f\n\r", motor1.zero_electric_angle);
+//
+//					motor0.controller = ControlType::velocity;
+//					motor1.controller = ControlType::velocity;
+//
+
+
+
+//					etMotorToCentres(&motor0, &az_speed);
+//					motor0.controller = ControlType::none;
+//					motor0.initFOC(NOT_SET);
+//
+//
+//					setMotorToCentres(&motor1, &el_speed);
+//					motor1.controller = ControlType::none;
+//					motor1.initFOC(NOT_SET);
+//
+//					settings.get().azMotor_electric_angle = motor0.zero_electric_angle;
+//					settings.get().elMotor_electric_angle = motor1.zero_electric_angle;
+//
+//					printf("motor0 elangle %f\n\r", motor0.zero_electric_angle);
+//					printf("motor1 elangle %f\n\r", motor1.zero_electric_angle);
+//
+//					motor0.controller = ControlType::velocity;
+//					motor1.controller = ControlType::velocity;
 					Need_to_calibrate  = false;
 
 
@@ -749,14 +916,14 @@ void run_encoder_test()
 				/* tune autopid */
 				if (autopid_az==true)
 				{
-					autoTuneVelocityPID(&motor0,0, settings.get().azMotor_voltage_limit);
+					autoTuneVelocityPID(&motor0,0,&az_speed, settings.get().azMotor_voltage_limit);
 					autopid_az=false;
 				}
 
 				/* tune autopid */
 				if (autopid_el==true)
 				{
-					autoTuneVelocityPID(&motor1,1, settings.get().elMotor_voltage_limit);
+					autoTuneVelocityPID(&motor1,1,&el_speed, settings.get().elMotor_voltage_limit);
 					autopid_el=false;
 				}
 
@@ -776,11 +943,8 @@ void run_encoder_test()
 
 
 
-
-
 	    int dir_az=0;
 	    int dir_el=0;
-
 
 
 		angle = pitchDma.getAngle();

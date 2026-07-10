@@ -8,15 +8,7 @@
  * @file encoderDataDma.h
  * @brief Драйвер энкодера AM4096 для SimpleFOC (через DMA-буфер из sensors chain)
  *
- * Исправления:
- * - getAngle() теперь возвращает НЕПРЕРЫВНЫЙ (unwrapped) угол в радианах
- *   без искусственного разрыва на ±π. Это критично для стабильной работы
- *   shaft_angle и любого position/velocity контроля.
- * - getVelocity() вычисляется по разнице raw-позиции (0-4095) с правильной
- *   обработкой переполнения 12-битного счётчика. Больше нет огромных
- *   скачков скорости при переходе через границу ±π.
- * - Используется реальное время между вызовами (HAL_GetTick).
- * - Сохранена совместимость с zero_offset и natural_direction.
+
  */
 
 
@@ -111,12 +103,6 @@ public:
 		return angle - PI;
     }
 
-
-
-    /**
-     * Скорость вычисляется по raw-разнице (без использования обёрнутого угла).
-     * Это устраняет скачки ~2π при переходе границы.
-     */
     float getVelocity() override
     {
         if (!encDataPtr) return 0.0f;
@@ -159,17 +145,6 @@ public:
             anglesArray[ar_index % POS_ARRAY_SIZE] = ((uint16_t)(encDataPtr[0] << 8) | encDataPtr[1])&0x0fff;
             ar_index++;
         }
-
-//        if (ar_index < POS_ARRAY_SIZE)
-//        {
-//            velocity =0.0f;
-//            return;
-//        }
-
-
-
-
-
     }
 
 

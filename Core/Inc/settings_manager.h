@@ -24,6 +24,7 @@ struct Settings_t {
     float azMotor_Pid_velocity_D;
     float azMotor_LPF_velocity_TF;
     float azMotor_electric_angle;
+    float azZero_encoder_offet;
 
     float elMotor_voltage_limit;
     float elMotor_velocity_limit;
@@ -32,6 +33,7 @@ struct Settings_t {
     float elMotor_Pid_velocity_D;
     float elMotor_LPF_velocity_TF;
     float elMotor_electric_angle;
+    float elZero_encoder_offet;
 
 
 

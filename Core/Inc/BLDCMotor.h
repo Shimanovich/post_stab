@@ -50,7 +50,7 @@ class BLDCMotor: public FOCMotor
     /** Motor enable function */
     void enable() override;
 
-
+    void setZeroPosDirect(void);
 
     /**
      * Function initializing FOC algorithm
